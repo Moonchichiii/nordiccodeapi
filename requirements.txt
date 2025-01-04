@@ -1,0 +1,16 @@
+celery
+Django
+django-redis-5.4.0
+dj_database_url
+django-cloudinary-storage
+django-cors-headers
+django-csp
+django-filter
+django-ratelimit
+djangorestframework
+Pillow
+python-decouple
+openai
+redis
+psycopg2-binary
+langdetect
