@@ -1,6 +1,6 @@
 celery
 Django
-django-redis-5.4.0
+django-redis
 dj_database_url
 django-cloudinary-storage
 django-cors-headers
