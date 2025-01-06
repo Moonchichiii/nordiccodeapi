@@ -1,3 +1,8 @@
+"""Test module for Project model and related API endpoints.
+
+This module contains test cases for the Project model's string representation
+and API endpoints for listing and retrieving project details.
+"""
 import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -6,7 +11,11 @@ from projects.models import Project
 
 
 @pytest.mark.django_db
-def test_project_model_str():
+def test_project_model_str() -> None:
+    """Test the string representation of Project model.
+
+    Creates a test project and verifies its string representation.
+    """
     project = Project.objects.create(
         title="My Portfolio",
         description="Just a test project",
@@ -18,9 +27,14 @@ def test_project_model_str():
 
 
 @pytest.mark.django_db
-def test_list_projects_api():
+def test_list_projects_api() -> None:
+    """Test the project listing API endpoint.
+
+    Creates multiple test projects and verifies the list endpoint response.
+    """
     client = APIClient()
     url = reverse("project-list")
+    
     Project.objects.create(
         title="Project1",
         description="Desc1",
@@ -43,7 +57,11 @@ def test_list_projects_api():
 
 
 @pytest.mark.django_db
-def test_detail_project_api():
+def test_detail_project_api() -> None:
+    """Test the project detail API endpoint.
+
+    Creates a test project and verifies the detail endpoint response.
+    """
     client = APIClient()
     project = Project.objects.create(
         title="DetailTest",

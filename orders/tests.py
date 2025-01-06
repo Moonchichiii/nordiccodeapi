@@ -1,38 +1,69 @@
+"""Test module for ProjectOrder functionality in the orders application."""
+
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
-from django.contrib.auth import get_user_model
+
 from orders.models import ProjectOrder
 
 User = get_user_model()
 
+
 @pytest.mark.django_db
 def test_project_order_str():
-    user = User.objects.create_user(email="orderuser@example.com", password="testpass")
+    """Test the string representation of ProjectOrder model.
+    
+    Creates a test user and project order, then verifies the string output format.
+    """
+    user = User.objects.create_user(
+        email="orderuser@example.com",
+        password="testpass"
+    )
     order = ProjectOrder.objects.create(
         user=user,
         project_type="Simple Website",
         description="Some description",
         status="pending"
     )
-    assert str(order) == f"Order #{order.pk} - Simple Website"
+    expected_str = f"Order #{order.pk} - Simple Website"
+    assert str(order) == expected_str
+
 
 @pytest.mark.django_db
 def test_create_order_unauthenticated():
+    """Test order creation with unauthenticated user.
+    
+    Verifies that unauthorized users cannot create orders.
+    """
     client = APIClient()
     url = reverse("orders-list")
-    data = {"project_type": "E-commerce", "description": "Need a store"}
+    data = {
+        "project_type": "E-commerce",
+        "description": "Need a store"
+    }
     response = client.post(url, data, format='json')
     assert response.status_code == 401
 
+
 @pytest.mark.django_db
 def test_create_order_authenticated():
-    user = User.objects.create_user(email="authuser@example.com", password="testpass")
+    """Test order creation with authenticated user.
+    
+    Verifies that authorized users can create orders with correct data.
+    """
+    user = User.objects.create_user(
+        email="authuser@example.com",
+        password="testpass"
+    )
     client = APIClient()
     client.login(email="authuser@example.com", password="testpass")
 
     url = reverse("orders-list")
-    data = {"project_type": "E-commerce", "description": "Need a store ASAP"}
+    data = {
+        "project_type": "E-commerce",
+        "description": "Need a store ASAP"
+    }
     response = client.post(url, data, format='json')
     assert response.status_code == 201
 

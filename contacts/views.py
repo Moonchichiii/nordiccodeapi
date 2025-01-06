@@ -1,5 +1,7 @@
-"""
-Views for the contacts application.
+"""Views module for managing contact-related operations in the application.
+
+This module provides ViewSet implementations for handling contact messages,
+including creation and listing operations with rate limiting.
 """
 
 import logging
@@ -15,8 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 class ContactViewSet(viewsets.ModelViewSet):
-    """
-    A viewset for creating and listing contact messages.
+    """ViewSet for managing contact messages.
+
+    Provides CRUD operations for Contact model with rate limiting on creation.
+
+    Attributes:
+        queryset: QuerySet of all Contact objects
+        serializer_class: Serializer class for Contact model
+        permission_classes: List of permission classes applied to the viewset
     """
 
     queryset = Contact.objects.all()
@@ -25,16 +33,25 @@ class ContactViewSet(viewsets.ModelViewSet):
 
     @method_decorator(ratelimit(key="ip", rate="5/m", block=True))
     def create(self, request, *args, **kwargs):
+        """Create a new contact message.
+
+        Rate-limited to 5 requests per minute per IP address.
+        Email notifications are handled through model signals.
+
+        Args:
+            request: The HTTP request object
+            *args: Variable length argument list
+            **kwargs: Arbitrary keyword arguments
+
+        Returns:
+            Response object with the created contact data
         """
-        Create a new contact. Rate-limited to 5 requests/minute per IP.
-        Email sending will be handled by signals.
-        """
-        response = super().create(request, *args, **kwargs)
-        return response
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        """
-        Save the contact in the database.
-        Email sending will be handled by signals.
+        """Save the contact message to the database.
+
+        Args:
+            serializer: Validated serializer instance containing contact data
         """
         serializer.save()

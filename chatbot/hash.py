@@ -1,77 +1,83 @@
-"""
-This module provides functions to hash and verify messages 
-and secrets using HMAC-SHA256 and SHA-256.
+"""Hash utilities for message and secret handling.
+
+This module provides functions to hash and verify messages and secrets using
+HMAC-SHA256 and SHA-256 algorithms with optional salting and peppering.
+
 Functions:
-    hash_message(message: str) -> str:
-        Hash the user's message using 
-        HMAC-SHA256 with an optional pepper for enhanced security.
-    hash_secret(secret: str, salt: str = None) -> str:
-        Hash a secret (like an API key or password) 
-        using SHA-256 with an optional salt for enhanced security.
-    verify_message_hash(message: str, message_hash: str) -> bool:
-        Verify if the provided message matches its hash using HMAC-SHA256.
+    hash_message: Hash messages using HMAC-SHA256 with pepper.
+    hash_secret: Hash secrets using SHA-256 with optional salt.
+    verify_message_hash: Verify message against its hash.
 """
 
 import hashlib
 import hmac
 import os
 
-# Optional: Pepper value to make the hash even more secure (add it via environment variable)
+
+# Pepper value from environment or default
 PEPPER = os.getenv("HASH_PEPPER", "default_pepper_value")
 
 
 def hash_message(message: str) -> str:
-    """
-    Hash the user's message using HMAC-SHA256.
-    Uses a PEPPER to enhance security (useful if a database is compromised).
+    """Hash a message using HMAC-SHA256 with pepper.
+
     Args:
-        message (str): The message to hash.
+        message: The message string to hash.
+
     Returns:
-        str: A SHA-256 hash of the message.
+        A hexadecimal string representing the hash.
+
+    Raises:
+        ValueError: If message is not a string.
     """
     if not isinstance(message, str):
         raise ValueError("Message must be a string.")
 
-    # Use HMAC to combine the message with a pepper (extra layer of security)
     message_bytes = message.encode("utf-8")
     pepper_bytes = PEPPER.encode("utf-8")
 
-    # HMAC SHA-256 hashing
-    message_hash = hmac.new(pepper_bytes, message_bytes, hashlib.sha256).hexdigest()
-    return message_hash
+    return hmac.new(
+        pepper_bytes,
+        message_bytes,
+        hashlib.sha256
+    ).hexdigest()
 
 
-def hash_secret(secret: str, salt: str = None) -> str:
-    """
-    Hash a secret (like an API key or password) using SHA-256.
-    You can provide a salt to make it more secure.
+def hash_secret(secret: str, salt: str | None = None) -> str:
+    """Hash a secret using SHA-256 with optional salt.
+
     Args:
-        secret (str): The secret to hash.
-        salt (str, optional): Optional salt to add to the hash.
+        secret: The secret string to hash.
+        salt: Optional salt string to add to the hash.
+
     Returns:
-        str: A SHA-256 hash of the secret.
+        A hexadecimal string representing the hash.
+
+    Raises:
+        ValueError: If secret is not a string.
     """
     if not isinstance(secret, str):
         raise ValueError("Secret must be a string.")
 
     if salt is None:
-        # Generate a random salt if not provided (16 random bytes)
         salt = os.urandom(16).hex()
 
-    # Hash the secret combined with the salt
     secret_bytes = f"{secret}{salt}".encode("utf-8")
-    secret_hash = hashlib.sha256(secret_bytes).hexdigest()
-    return secret_hash
+    return hashlib.sha256(secret_bytes).hexdigest()
 
 
 def verify_message_hash(message: str, message_hash: str) -> bool:
-    """
-    Verify if the provided message matches its hash.
+    """Verify if a message matches its hash.
+
     Args:
-        message (str): The original message.
-        message_hash (str): The hashed value of the message.
+        message: The original message string.
+        message_hash: The expected hash string.
+
     Returns:
-        bool: True if the message matches the hash, False otherwise.
+        True if the message matches the hash, False otherwise.
+
+    Raises:
+        ValueError: If either argument is not a string.
     """
     if not isinstance(message, str) or not isinstance(message_hash, str):
         raise ValueError("Both message and message_hash must be strings.")

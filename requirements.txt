@@ -1,4 +1,5 @@
 celery
+cryptography
 Django
 django-redis
 dj_database_url
@@ -8,6 +9,7 @@ django-csp
 django-filter
 django-ratelimit
 djangorestframework
+djangorestframework-simplejwt
 django-allauth
 dj-rest-auth
 Pillow
@@ -18,3 +20,7 @@ psycopg2-binary
 langdetect
 stripe
 isort
+PyJWT
+locust
+
+

@@ -1,3 +1,11 @@
+DJANGO_SETTINGS_MODULE = "backend.settings"
+
+[tool.pytest]
+DJANGO_SETTINGS_MODULE = "backend.settings"
+python_files = "tests.py test_*.py *_tests.py"
+addopts = "--nomigrations --cov=. --cov-report=html"
+
+
 [tool.isort]
 profile = "black"
 line_length = 88
@@ -7,7 +15,3 @@ multi_line_output = 3
 line-length = 88
 target-version = ["py39"]
 
-[tool.pytest]
-DJANGO_SETTINGS_MODULE = "backend.settings"
-python_files = "tests.py test_*.py *_tests.py"
-addopts = "--nomigrations --cov=. --cov-report=html"

@@ -1,5 +1,21 @@
+"""URL configuration module for the backend application.
+
+This module defines the URL routing patterns for the entire backend application,
+including admin, API endpoints, and authentication routes.
+
+Routes:
+    - /admin/: Django admin interface
+    - /api/contacts/: Contact management API
+    - /api/projects/: Project management API
+    - /api/orders/: Order management API
+    - /api/chatbot/: Chatbot interaction API
+    - /auth/: Authentication endpoints
+    - /auth/registration/: User registration endpoints
+"""
+
 from django.contrib import admin
 from django.urls import include, path
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -10,14 +26,3 @@ urlpatterns = [
     path("auth/", include("dj_rest_auth.urls")),
     path("auth/registration/", include("dj_rest_auth.registration.urls")),
 ]
-
-"""
-URL configuration for the backend application.
-Includes routes for admin, contact, projects, chatbot APIs, and authentication endpoints.
-Authentication endpoints include:
-- POST /auth/login/
-- POST /auth/logout/
-- POST /auth/password/reset/
-- POST /auth/registration/
-- POST /auth/registration/account-confirm-email/<key>/
-"""
