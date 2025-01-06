@@ -1,27 +1,32 @@
-"""Serializer module for ProjectOrder model.
-
-This module provides serialization functionality for handling project order data
-through the REST API.
-"""
 from rest_framework import serializers
+from .models import ProjectOrder, OrderPayment
 
-from .models import ProjectOrder
+
+class OrderPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderPayment
+        fields = ['id', 'amount', 'payment_type', 'status', 'created_at']
+        read_only_fields = ['stripe_payment_id']
 
 
 class ProjectOrderSerializer(serializers.ModelSerializer):
-    """Serializer for ProjectOrder model.
-
-    Handles the conversion of ProjectOrder instances to/from JSON format.
-    Includes field validation and read-only specifications.
-    """
+    payments = OrderPaymentSerializer(many=True, read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    payment_status_display = serializers.CharField(
+        source='get_payment_status_display',
+        read_only=True
+    )
 
     class Meta:
-        """Meta class to configure the ProjectOrderSerializer."""
         model = ProjectOrder
-        fields = "__all__"
+        fields = [
+            'id', 'user', 'package', 'project_type', 'description',
+            'status', 'status_display', 'payment_status', 'payment_status_display',
+            'total_amount', 'deposit_amount', 'remaining_amount',
+            'commission_rate', 'requirements', 'timeline', 'payments',
+            'created_at', 'updated_at'
+        ]
         read_only_fields = [
-            "id",
-            "status",
-            "created_at",
-            "updated_at"
+            'status', 'payment_status', 'deposit_amount',
+            'remaining_amount', 'created_at', 'updated_at'
         ]

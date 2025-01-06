@@ -1,48 +1,126 @@
-"""
-Views for handling project order operations in the Nordic Code API.
+import stripe
+from django.conf import settings
+from django.shortcuts import get_object_or_404
+from django.views.generic import TemplateView
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.response import Response
 
-This module provides ViewSets for managing project orders with proper user authentication
-and filtering capabilities.
-"""
+from .models import ProjectOrder, OrderPayment
+from .serializers import ProjectOrderSerializer, OrderPaymentSerializer
+from backend.permissions import IsOrderOwner
 
-from rest_framework import permissions
-from rest_framework import viewsets
-
-from .models import ProjectOrder
-from .serializers import ProjectOrderSerializer
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 class ProjectOrderViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing project order operations.
-
-    Provides CRUD operations for ProjectOrder instances with user-based filtering
-    and automatic user assignment on creation.
-
-    Attributes:
-        queryset: QuerySet of all ProjectOrder objects
-        serializer_class: Serializer class for ProjectOrder model
-        permission_classes: List of permission classes required for access
+    Manages CRUD operations for ProjectOrder.
+    Only authenticated users can access orders, and we filter to the orders belonging to the user.
+    An additional permission class (IsOrderOwner) can be applied to enforce that only order owners can manage their orders.
     """
-
-    queryset = ProjectOrder.objects.all()
     serializer_class = ProjectOrderSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOrderOwner]
 
-    def perform_create(self, serializer) -> None:
+    def get_queryset(self):
+        # Show only orders owned by the logged-in user
+        return ProjectOrder.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
         """
-        Create a new project order associated with the current user.
-
-        Args:
-            serializer: The serializer instance containing validated data
+        Automatically associates the created order with the logged-in user.
         """
         serializer.save(user=self.request.user)
 
-    def get_queryset(self):
+    @action(detail=True, methods=['post'])
+    def process_deposit(self, request, pk=None):
         """
-        Filter orders to show only those belonging to the current user.
+        Creates a Stripe PaymentIntent for the deposit amount,
+        and an OrderPayment record with status='pending'.
+        """
+        order = self.get_object()
 
-        Returns:
-            QuerySet: Filtered queryset containing user's project orders
+        try:
+            payment_intent = stripe.PaymentIntent.create(
+                amount=int(order.deposit_amount * 100),  # Convert to cents
+                currency='usd',
+                customer=request.user.stripe_customer_id,
+                metadata={'order_id': order.id, 'payment_type': 'deposit'}
+            )
+
+            OrderPayment.objects.create(
+                order=order,
+                amount=order.deposit_amount,
+                stripe_payment_id=payment_intent.id,
+                payment_type='deposit',
+                status='pending'
+            )
+
+            return Response({'client_secret': payment_intent.client_secret})
+        except stripe.error.StripeError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def confirm_deposit(self, request, pk=None):
         """
-        return self.queryset.filter(user=self.request.user)
+        Checks the Stripe PaymentIntent status and, if succeeded,
+        marks the order deposit as completed (status='deposit_paid').
+        """
+        order = self.get_object()
+
+        payment = get_object_or_404(
+            OrderPayment,
+            order=order,
+            payment_type='deposit',
+            status='pending'
+        )
+
+        try:
+            stripe_payment = stripe.PaymentIntent.retrieve(payment.stripe_payment_id)
+
+            if stripe_payment.status == 'succeeded':
+                payment.status = 'completed'
+                payment.save()
+
+                order.payment_status = 'deposit_paid'
+                order.status = 'deposit_paid'
+                order.save()
+
+                return Response({'status': 'deposit_confirmed'})
+
+            return Response({'error': 'Payment not succeeded'}, status=status.HTTP_400_BAD_REQUEST)
+        except stripe.error.StripeError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CommissionDashboardView(TemplateView):
+    """
+    A read-only admin view for summarizing 'pending' commissions.
+    """
+    template_name = 'orders/commission_dashboard.html'
+    permission_classes = [IsAdminUser]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['pending_commissions'] = ProjectOrder.objects.filter(commission_status='pending')
+        context['total_commission_pending'] = sum(
+            order.calculate_commission() for order in context['pending_commissions']
+        )
+        return context
+
+
+class PaymentReportView(TemplateView):
+    """
+    A read-only admin view for summarizing completed payments and recent payment history.
+    """
+    template_name = 'orders/payment_report.html'
+    permission_classes = [IsAdminUser]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['total_payments'] = OrderPayment.objects.filter(status='completed')
+        context['recent_payments'] = OrderPayment.objects.filter(
+            status='completed'
+        ).order_by('-created_at')[:10]
+        return context
