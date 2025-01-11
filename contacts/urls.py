@@ -1,10 +1,9 @@
-from django.urls import include, path
+from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-
-from .views import ContactViewSet
+from contacts.views import ProjectConversationViewSet
 
 router = DefaultRouter()
-router.register(r"", ContactViewSet, basename="contact")
+router.register("project-messages", ProjectConversationViewSet, basename="project-messages")
 
 urlpatterns = [
     path("", include(router.urls)),

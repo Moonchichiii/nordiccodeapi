@@ -13,7 +13,6 @@ import hashlib
 import hmac
 import os
 
-
 # Pepper value from environment or default
 PEPPER = os.getenv("HASH_PEPPER", "default_pepper_value")
 
@@ -36,11 +35,7 @@ def hash_message(message: str) -> str:
     message_bytes = message.encode("utf-8")
     pepper_bytes = PEPPER.encode("utf-8")
 
-    return hmac.new(
-        pepper_bytes,
-        message_bytes,
-        hashlib.sha256
-    ).hexdigest()
+    return hmac.new(pepper_bytes, message_bytes, hashlib.sha256).hexdigest()
 
 
 def hash_secret(secret: str, salt: str | None = None) -> str:

@@ -1,4 +1,5 @@
 """Django admin configuration for chatbot application models."""
+
 from django.contrib import admin
 
 from .models import Chatbot, Message

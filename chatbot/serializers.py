@@ -6,7 +6,7 @@ class for interacting with the OpenAI API.
 """
 
 import os
-from typing import Dict, Any
+from typing import Any, Dict
 
 import openai
 from django.conf import settings

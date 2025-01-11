@@ -1,70 +1,90 @@
 from django.db import models
-from django.utils import timezone
-import stripe
-import logging
+from django.conf import settings
+from .validators import validate_file_extension, validate_file_size
 
-logger = logging.getLogger(__name__)
-
-class Contact(models.Model):
-    name = models.CharField(max_length=100)
-    email = models.EmailField()
-    message = models.TextField()
+class ProjectConversation(models.Model):
+    """
+    Represents a conversation thread for an active project.
+    Only created when a project moves to active status after deposit payment.
+    """
+    project = models.OneToOneField(
+        'projects.Project',
+        on_delete=models.CASCADE,
+        related_name='conversation'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['-updated_at']),
+            models.Index(fields=['project', '-updated_at'])
+        ]
 
     def __str__(self):
-        return f"{self.name} - {self.email}"
+        return f"Conversation for {self.project.title}"
 
-class ProjectInquiry(models.Model):
-    contact = models.OneToOneField(Contact, on_delete=models.CASCADE, related_name='inquiry')
-    package = models.ForeignKey('projects.ProjectPackage', on_delete=models.SET_NULL, null=True)
-    budget = models.DecimalField(max_digits=10, decimal_places=2)
-    timeline = models.JSONField(default=dict)
-    converted_to_order = models.BooleanField(default=False)
-    converted_at = models.DateTimeField(null=True)
-    stripe_customer_id = models.CharField(max_length=100, blank=True)
+    def get_participants(self):
+        """Get all participants in the conversation (client and staff)"""
+        return [self.project.user] + list(self.staff_participants.all())
 
+class ProjectMessage(models.Model):
+    """
+    Individual messages within a project conversation.
+    """
+    conversation = models.ForeignKey(
+        ProjectConversation,
+        on_delete=models.CASCADE,
+        related_name='messages'
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sent_project_messages'
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_by = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='read_messages'
+    )
+    has_attachment = models.BooleanField(default=False)
+    
     class Meta:
-        ordering = ["-contact__created_at"]
-        verbose_name = "Project Inquiry"
-        verbose_name_plural = "Project Inquiries"
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['conversation', 'created_at']),
+            models.Index(fields=['sender', 'created_at'])
+        ]
 
     def __str__(self):
-        return f"Inquiry from {self.contact.name} - {self.package.get_name_display() if self.package else 'No package'}"
+        return f"Message from {self.sender.email} at {self.created_at}"
 
-    # Your existing methods are correct
-    def create_stripe_customer(self):
-        if not self.stripe_customer_id and self.contact.email:
-            try:
-                customer = stripe.Customer.create(
-                    email=self.contact.email,
-                    metadata={
-                        'inquiry_id': self.id,
-                        'package': self.package.name
-                    }
-                )
-                self.stripe_customer_id = customer.id
-                self.save()
-                return customer
-            except stripe.error.StripeError as e:
-                logger.error(f"Stripe customer creation failed: {e}")
-                return None
+    def mark_read_by(self, user):
+        """Mark message as read by a user"""
+        self.read_by.add(user)
 
-    def convert_to_order(self, user):
-        if not self.converted_to_order:
-            from orders.models import ProjectOrder
-            order = ProjectOrder.objects.create(
-                user=user,
-                package=self.package,
-                project_type=self.contact.message[:100],
-                description=self.contact.message,
-                total_amount=self.package.base_price,
-                status='inquiry'
-            )
-            self.converted_to_order = True
-            self.converted_at = timezone.now()
-            self.save()
-            return order
-        return None
+class MessageAttachment(models.Model):
+    """
+    Attachments for project messages.
+    """
+    message = models.ForeignKey(
+        ProjectMessage,
+        on_delete=models.CASCADE,
+        related_name='attachments'
+    )
+    file = models.FileField(
+        upload_to='project_messages/%Y/%m/',
+        validators=[
+            validate_file_size,
+            validate_file_extension
+        ]
+    )
+    file_name = models.CharField(max_length=255)
+    file_type = models.CharField(max_length=100)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.file_name

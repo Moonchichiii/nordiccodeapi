@@ -1,4 +1,5 @@
 """Models for chatbot application handling messages and bot interactions."""
+
 from django.conf import settings
 from django.db import models
 
@@ -44,26 +45,18 @@ class Message(models.Model):
     ]
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )
-    chatbot = models.ForeignKey(
-        "Chatbot",
-        on_delete=models.CASCADE
-    )
+    chatbot = models.ForeignKey("Chatbot", on_delete=models.CASCADE)
     user_message = models.TextField()
     bot_response = models.TextField(blank=True, null=True)
     user_message_hash = models.CharField(max_length=64)
     timestamp = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(
-        max_length=50,
-        choices=STATUS_CHOICES
-    )
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES)
 
     class Meta:
         """Meta configuration for Message model."""
+
         verbose_name = "Message"
         verbose_name_plural = "Messages"
         ordering = ["-timestamp"]

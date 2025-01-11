@@ -1,7 +1,7 @@
 """Views for the chatbot application handling message processing and responses."""
 
 import logging
-from typing import Optional, List
+from typing import List, Optional
 
 from django.conf import settings
 from django.core.cache import cache
@@ -11,17 +11,12 @@ from django_ratelimit.decorators import ratelimit
 from langdetect import detect_langs
 from openai import APIError, OpenAI, RateLimitError, Timeout
 from rest_framework import status
-from rest_framework.decorators import (
-    api_view,
-    permission_classes,
-    throttle_classes,
-)
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 from .hash import hash_message
-
 
 # Initialize OpenAI client and logger
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -40,9 +35,9 @@ def get_cached_response(user_message: str) -> Optional[str]:
     """
     cache_key = f"secure_chatbot_response_{hash_message(user_message)}"
     cached_response = cache.get(cache_key)
-    logger.info('Cache %s for message: %s',
-                'hit' if cached_response else 'miss', 
-                user_message)
+    logger.info(
+        "Cache %s for message: %s", "hit" if cached_response else "miss", user_message
+    )
     return cached_response
 
 
@@ -72,30 +67,34 @@ def detect_language(user_message: str) -> str:
         return "en"
 
     swedish_greetings: List[str] = [
-        "hej", "hallå", "tjena", "hejsan",
-        "hej!", "hallå!", "tjena!", "hejsan!",
+        "hej",
+        "hallå",
+        "tjena",
+        "hejsan",
+        "hej!",
+        "hallå!",
+        "tjena!",
+        "hejsan!",
     ]
     if user_message.lower() in swedish_greetings:
-        logger.info('Detected Swedish via keyword matching: %s', user_message)
+        logger.info("Detected Swedish via keyword matching: %s", user_message)
         return "sv"
 
     try:
         detected_languages = detect_langs(user_message)
         logger.info(
-            'Language detection results for "%s": %s',
-            user_message,
-            detected_languages
+            'Language detection results for "%s": %s', user_message, detected_languages
         )
 
         for lang in detected_languages:
             if lang.lang == "sv" and lang.prob > 0.5:
-                logger.info('Detected language: Swedish (%s)', lang.prob)
+                logger.info("Detected language: Swedish (%s)", lang.prob)
                 return "sv"
 
     except (ValueError, TypeError) as e:
-        logger.error('Language detection failed: %s', e)
+        logger.error("Language detection failed: %s", e)
 
-    logger.info('Defaulting to English for message: %s', user_message)
+    logger.info("Defaulting to English for message: %s", user_message)
     return "en"
 
 
@@ -124,14 +123,11 @@ def chatbot(request):
     safe_user_message = escape(user_message)
     cached_response = get_cached_response(safe_user_message)
     if cached_response:
-        return Response(
-            {"message": cached_response},
-            status=status.HTTP_200_OK
-        )
+        return Response({"message": cached_response}, status=status.HTTP_200_OK)
 
     try:
         detected_language = detect_language(safe_user_message)
-        logger.info('Detected language: %s', detected_language)
+        logger.info("Detected language: %s", detected_language)
 
         system_prompt = _get_system_prompt(detected_language)
         response = _get_openai_response(safe_user_message, system_prompt)
@@ -142,7 +138,7 @@ def chatbot(request):
         return Response({"message": bot_message}, status=status.HTTP_200_OK)
 
     except (APIError, RateLimitError, Timeout) as e:
-        logger.error('OpenAI API error: %s', e)
+        logger.error("OpenAI API error: %s", e)
         return Response(
             {"error": "Failed to process your request."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
