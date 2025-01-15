@@ -20,39 +20,41 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 class ProjectOrderViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectOrderSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'payment_status']
-    search_fields = ['id', 'package__name']
-    ordering_fields = ['created_at', 'total_amount']
-    ordering = ['-created_at']
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["status", "payment_status"]
+    search_fields = ["id", "package__name"]
+    ordering_fields = ["created_at", "total_amount"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
-        return ProjectOrder.objects.select_related(
-            'user', 'package'
-        ).prefetch_related(
-            'payments'
-        ).filter(user=self.request.user)
+        return (
+            ProjectOrder.objects.select_related("user", "package")
+            .prefetch_related("payments")
+            .filter(user=self.request.user)
+        )
 
     @transaction.atomic
     def perform_create(self, serializer):
         order = serializer.save(
-            user=self.request.user,
-            status="inquiry",
-            payment_status="awaiting_deposit"
+            user=self.request.user, status="inquiry", payment_status="awaiting_deposit"
         )
         self.calculate_amounts(order)
 
     def calculate_amounts(self, order):
-        order.deposit_amount = order.total_amount * Decimal('0.30')
+        order.deposit_amount = order.total_amount * Decimal("0.30")
         order.remaining_amount = order.total_amount - order.deposit_amount
-        order.save(update_fields=['deposit_amount', 'remaining_amount'])
+        order.save(update_fields=["deposit_amount", "remaining_amount"])
 
     @transaction.atomic
     def perform_update(self, serializer):
         instance = serializer.save()
         if "status" in serializer.validated_data:
             instance.status = serializer.validated_data["status"]
-            instance.save(update_fields=['status'])
+            instance.save(update_fields=["status"])
 
     @action(detail=True, methods=["post"])
     def process_deposit(self, request, pk=None):
@@ -74,16 +76,18 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
                 status="pending",
             )
 
-            return Response({
-                "client_secret": payment_intent.client_secret,
-                "payment_id": payment.id,
-            })
+            return Response(
+                {
+                    "client_secret": payment_intent.client_secret,
+                    "payment_id": payment.id,
+                }
+            )
         except stripe.error.StripeError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response(
                 {"error": "An unexpected error occurred"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=True, methods=["post"])
@@ -99,18 +103,19 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
 
             if stripe_payment.status == "succeeded":
                 payment.status = "completed"
-                payment.save(update_fields=['status'])
+                payment.save(update_fields=["status"])
 
                 order.payment_status = "deposit_paid"
                 order.status = "deposit_paid"
-                order.save(update_fields=['payment_status', 'status'])
+                order.save(update_fields=["payment_status", "status"])
 
-                NotificationService.send_payment_notification(payment, "payment_success")
+                NotificationService.send_payment_notification(
+                    payment, "payment_success"
+                )
                 return Response({"status": "deposit_confirmed"})
 
             return Response(
-                {"error": "Payment not succeeded"}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Payment not succeeded"}, status=status.HTTP_400_BAD_REQUEST
             )
         except stripe.error.StripeError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -124,7 +129,7 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
         if not milestone_id:
             return Response(
                 {"error": "milestone_id is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -148,10 +153,12 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
                 status="pending",
             )
 
-            return Response({
-                "client_secret": payment_intent.client_secret,
-                "payment_id": payment.id,
-            })
+            return Response(
+                {
+                    "client_secret": payment_intent.client_secret,
+                    "payment_id": payment.id,
+                }
+            )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

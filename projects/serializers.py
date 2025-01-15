@@ -3,7 +3,9 @@ from .models import Project, ProjectPackage
 
 
 class ProjectSerializer(serializers.ModelSerializer):
-    package_name = serializers.CharField(source="package.get_name_display", read_only=True)
+    package_name = serializers.CharField(
+        source="package.get_name_display", read_only=True
+    )
 
     class Meta:
         model = Project

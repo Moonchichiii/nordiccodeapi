@@ -1,4 +1,5 @@
 channels
+channels_redis
 celery
 cryptography
 Django
@@ -23,5 +24,6 @@ stripe
 isort
 PyJWT
 locust
+
 
 

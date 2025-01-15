@@ -42,7 +42,7 @@ class OrderCreationTests(OrderTestCase):
         order_data = {
             "package": self.package.id,
             "total_amount": "1000.00",
-            }
+        }
         response = self.client.post(self.list_url, order_data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -53,7 +53,9 @@ class OrderCreationTests(OrderTestCase):
 
     def test_calculate_deposit_and_remaining_amount(self):
         """Test automatic calculation of deposit and remaining amounts."""
-        response = self.client.post(reverse("orders-list"), self.order_data, format="json")
+        response = self.client.post(
+            reverse("orders-list"), self.order_data, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         order = ProjectOrder.objects.get(id=response.json()["id"])
@@ -66,7 +68,9 @@ class OrderStatusTests(OrderTestCase):
 
     def test_status_flow(self):
         """Test valid status transitions."""
-        response = self.client.post(reverse("orders-list"), self.order_data, format="json")
+        response = self.client.post(
+            reverse("orders-list"), self.order_data, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         order_id = response.json()["id"]
@@ -116,7 +120,9 @@ class PaymentProcessTests(OrderTestCase):
     @patch("stripe.PaymentIntent.create")
     def test_deposit_payment_flow(self, mock_create):
         """Test the deposit payment process."""
-        response = self.client.post(reverse("orders-list"), self.order_data, format="json")
+        response = self.client.post(
+            reverse("orders-list"), self.order_data, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         order_id = response.json()["id"]
@@ -174,7 +180,9 @@ class AdminInterfaceTests(OrderTestCase):
             package=self.package,
             total_amount=Decimal("1000.00"),
         )
-        response = self.client.get(reverse("admin:orders_projectorder_change", args=[order.pk]))
+        response = self.client.get(
+            reverse("admin:orders_projectorder_change", args=[order.pk])
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertContains(response, order.project_type)
 
@@ -196,7 +204,9 @@ class NotificationTests(OrderTestCase):
             status="completed",
         )
         # Replace `NotificationService.send_payment_notification()` with your actual function
-        with patch("orders.services.NotificationService.send_payment_notification") as mock_notify:
+        with patch(
+            "orders.services.NotificationService.send_payment_notification"
+        ) as mock_notify:
             mock_notify.return_value = True
             NotificationService.send_payment_notification(payment, "payment_success")
             mock_notify.assert_called_once()
@@ -208,7 +218,9 @@ class AccessControlTests(OrderTestCase):
     def test_non_owner_cannot_access_order(self):
         """Test that a user cannot access another user's order."""
         other_user = self.create_user(email="other@example.com")
-        order = ProjectOrder.objects.create(user=other_user, package=self.package, total_amount=1000.00)
+        order = ProjectOrder.objects.create(
+            user=other_user, package=self.package, total_amount=1000.00
+        )
 
         url = reverse("orders-detail", args=[order.pk])
         response = self.client.get(url)

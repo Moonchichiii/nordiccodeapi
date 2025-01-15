@@ -20,7 +20,9 @@ class Project(models.Model):
         "ProjectPackage", on_delete=models.SET_NULL, null=True, blank=True
     )
     client_specifications = models.FileField(
-        upload_to="client_specs/", blank=True, null=True,
+        upload_to="client_specs/",
+        blank=True,
+        null=True,
         help_text="Client-provided documents for project customization.",
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="planning")
@@ -47,15 +49,14 @@ class ProjectPackage(models.Model):
     deliverables = models.JSONField(default=list)
     estimated_duration = models.IntegerField(help_text="Duration in days")
     maintenance_period = models.IntegerField(default=30, help_text="Days of support")
-    sla_response_time = models.IntegerField(default=24, help_text="Response time in hours")
+    sla_response_time = models.IntegerField(
+        default=24, help_text="Response time in hours"
+    )
 
     def __str__(self):
         return self.get_name_display()
 
 
-
 assigned_staff = models.ManyToManyField(
-    settings.AUTH_USER_MODEL,
-    related_name='assigned_projects',
-    blank=True
+    settings.AUTH_USER_MODEL, related_name="assigned_projects", blank=True
 )

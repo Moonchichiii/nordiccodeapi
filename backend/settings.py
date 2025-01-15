@@ -26,11 +26,12 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
 # Development Security Settings
-CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SAMESITE = "Lax"
+
 
 # Application Configuration
 # ------------------------------------------------------------------------------
@@ -40,7 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
-    "django.contrib.messages",    
+    "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
     # Third party apps
@@ -53,13 +54,13 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "dj_rest_auth",
-    "dj_rest_auth.registration",    
+    "dj_rest_auth.registration",
     "corsheaders",
     "cloudinary",
     "cloudinary_storage",
     "django_ratelimit",
     "django_filters",
-    'channels',
+    "channels",
     "csp",
     # Local apps
     "users",
@@ -83,8 +84,16 @@ MIDDLEWARE = [
     "csp.middleware.CSPMiddleware",
 ]
 
+ASGI_APPLICATION = "backend.asgi.application"
+
+
 # Authentication Settings
 # ------------------------------------------------------------------------------
+AUTHENTICATION_BACKENDS = [
+    "users.auth_backends.CaseInsensitiveEmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
 AUTH_USER_MODEL = "users.CustomUser"
 SITE_ID = 1
 
@@ -108,6 +117,8 @@ ACCOUNT_EMAIL_VERIFICATION_SENT_REDIRECT_URL = "/auth/registration/verification-
 
 # Password reset customization
 PASSWORD_RESET_TIMEOUT = 86400
+PASSWORD_RESET_FRONTEND_URL = "http://localhost:5173/reset"
+
 
 REST_AUTH_EMAIL = {
     "TOKEN_MODEL": None,
@@ -132,13 +143,15 @@ REST_FRAMEWORK = {
         "dj_rest_auth.jwt_auth.JWTCookieAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
 }
+
+REST_USE_JWT = True
 
 REST_AUTH = {
     "USE_JWT": True,
@@ -146,7 +159,9 @@ REST_AUTH = {
     "JWT_AUTH_REFRESH_COOKIE": "refresh_token",
     "JWT_AUTH_HTTPONLY": True,
     "JWT_AUTH_SAMESITE": "Lax",
-    "JWT_AUTH_SECURE": False,  # Set True in production
+    "JWT_AUTH_SECURE": False,
+    "JWT_AUTH_COOKIE_USE_CSRF": False,  # Added
+    "TOKEN_MODEL": None,
     "SESSION_LOGIN": False,
     "USER_DETAILS_SERIALIZER": "users.serializers.CustomUserDetailsSerializer",
     "REGISTER_SERIALIZER": "users.serializers.CustomRegisterSerializer",
@@ -170,11 +185,19 @@ SIMPLE_JWT = {
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
     "TOKEN_TYPE_CLAIM": "token_type",
     "JTI_CLAIM": "jti",
+    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
     "SLIDING_TOKEN_REFRESH_EXP_CLAIM": "refresh_exp",
     "SLIDING_TOKEN_LIFETIME": timedelta(minutes=5),
     "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
-    "JWT_AUTH_SECURE": True,
+    "AUTH_COOKIE": "access_token",
+    "AUTH_COOKIE_REFRESH": "refresh_token",
+    "AUTH_COOKIE_DOMAIN": None,
+    "AUTH_COOKIE_SECURE": False,
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_PATH": "/",
+    "AUTH_COOKIE_SAMESITE": "Lax",
 }
+
 
 # URLs and Templates Configuration
 # ------------------------------------------------------------------------------
@@ -264,10 +287,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://nordiccodeworks.com",
 ]
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"]
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173,Http://localhost:8000",]
 
-# Redis and Caching
-# ------------------------------------------------------------------------------
 # Redis and Caching
 # ------------------------------------------------------------------------------
 CACHES = {
@@ -284,9 +305,9 @@ CACHES = {
 }
 
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
             "hosts": [("127.0.0.1", 6380)],
         },
     },
@@ -315,7 +336,11 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 
 # Email Configuration
 # ------------------------------------------------------------------------------
-EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+if DEBUG:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
@@ -360,44 +385,7 @@ CSP_OBJECT_SRC = ("'none'",)
 
 # Logging Configuration
 # ------------------------------------------------------------------------------
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": "[%(levelname)s] %(asctime)s %(module)s %(message)s",
-            "style": "%",
-        },
-        "simple": {
-            "format": "[%(levelname)s] %(message)s",
-            "style": "%",
-        },
-    },
-    "handlers": {
-        "file": {
-            "level": "ERROR",
-            "class": "logging.FileHandler",
-            "filename": BASE_DIR / "error.log",
-            "formatter": "verbose",
-        },
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "simple",
-        },
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["file", "console"],
-            "level": "ERROR",
-            "propagate": True,
-        },
-        "contact": {
-            "handlers": ["file", "console"],
-            "level": "ERROR",
-            "propagate": False,
-        },
-    },
-}
+
 
 # Default Field Type
 # ------------------------------------------------------------------------------

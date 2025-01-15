@@ -21,14 +21,16 @@ class ChatbotRequestSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=1024)
 
     def create(self, validated_data):
+        # Provide a body or remove the method if unused
+        # For example:
+        return validated_data
+
+
 class ChatbotResponseSerializer(serializers.Serializer):
     """Serializer for chatbot response data."""
 
     prompt = serializers.CharField(max_length=1024)
-    response = serializers.CharField(
-        max_length=2048,
-        read_only=True
-    )
+    response = serializers.CharField(max_length=2048, read_only=True)
 
     def create(self, validated_data):
         return validated_data
@@ -36,20 +38,13 @@ class ChatbotResponseSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         instance.update(validated_data)
         return instance
-    """Serializer for chatbot response data."""
-
-    prompt = serializers.CharField(max_length=1024)
-    response = serializers.CharField(
-        max_length=2048,
-        read_only=True
-    )
 
 
 class OpenAIServiceError(APIException):
     """Custom exception for OpenAI service errors."""
 
     status_code = 503
-    default_detail = 'OpenAI service error'
+    default_detail = "OpenAI service error"
 
 
 class ChatbotService:
@@ -72,9 +67,7 @@ class ChatbotService:
         openai.api_key = os.getenv("OPENAI_API_KEY", settings.OPENAI_API_KEY)
         try:
             response = openai.Completion.create(
-                engine="davinci",
-                prompt=prompt,
-                max_tokens=150
+                engine="davinci", prompt=prompt, max_tokens=150
             )
             return response.choices[0].text.strip()
         except (openai.error.OpenAIError, KeyError, IndexError) as exc:
