@@ -10,6 +10,9 @@ from pathlib import Path
 import dj_database_url
 from decouple import config
 
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+
 # Basic Configuration
 # ------------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -18,7 +21,9 @@ PROJECT_NAME = "Nordic Code Works"
 # Security Settings
 # ------------------------------------------------------------------------------
 SECRET_KEY = config("SECRET_KEY")
-DEBUG = config("DEBUG", default=False, cast=bool)
+
+# DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = True
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="").split(",")
 
 SECURE_BROWSER_XSS_FILTER = True
@@ -55,6 +60,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "dj_rest_auth",
     "dj_rest_auth.registration",
+    "django_extensions",
     "corsheaders",
     "cloudinary",
     "cloudinary_storage",
@@ -70,13 +76,14 @@ INSTALLED_APPS = [
     "orders",
 ]
 
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
-    # "django_ratelimit.middleware.RatelimitMiddleware",
+    #  Testing "django_ratelimit.middleware.RatelimitMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -86,127 +93,137 @@ MIDDLEWARE = [
 
 ASGI_APPLICATION = "backend.asgi.application"
 
-
-# Authentication Settings
+# URLs and Frontend Configuration
 # ------------------------------------------------------------------------------
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+ROOT_URLCONF = "backend.urls"
+WSGI_APPLICATION = "backend.wsgi.application"
+
+# Authentication and Email Configuration
+# ------------------------------------------------------------------------------
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+
+# Base Authentication Settings
+AUTH_USER_MODEL = "users.CustomUser"
+SITE_ID = 1
+APPEND_SLASH = False
+
+# Authentication Backends
 AUTHENTICATION_BACKENDS = [
     "users.auth_backends.CaseInsensitiveEmailBackend",
     "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
-AUTH_USER_MODEL = "users.CustomUser"
-SITE_ID = 1
-
-# AllAuth Configuration
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_AUTHENTICATION_METHOD = "email"
-ACCOUNT_USERNAME_REQUIRED = False
+# AllAuth Settings
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
-ACCOUNT_CONFIRM_EMAIL_ON_GET = True
-ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
-ACCOUNT_EMAIL_CONFIRMATION_HMAC = True
-ACCOUNT_EMAIL_VERIFICATION_SENT_REDIRECT_URL = "http://localhost:5173"
-ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = (
-    "http://localhost:5173/dashboard"
-)
-ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = "http://localhost:5173/login"
-ACCOUNT_EMAIL_VERIFICATION_SENT_REDIRECT_URL = "/auth/registration/verification-sent/"
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = f"{FRONTEND_URL}/email-verified"
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = f"{FRONTEND_URL}/email-verified"
 
-# Password reset customization
-PASSWORD_RESET_TIMEOUT = 86400
-PASSWORD_RESET_FRONTEND_URL = "http://localhost:5173/reset"
-
-
-REST_AUTH_EMAIL = {
-    "TOKEN_MODEL": None,
-    "REGISTER_VERIFICATION_ENABLED": True,
-    "RESET_PASSWORD_VERIFICATION_ENABLED": True,
+# JWT Configuration
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(hours=12),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "USER_ID_FIELD": "email",
+    "USER_ID_CLAIM": "email",
+    "AUTH_COOKIE": "access_token",
+    "AUTH_COOKIE_REFRESH": "refresh_token",
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_PATH": "/",
+    "AUTH_COOKIE_SAMESITE": "Lax",
+    "AUTH_COOKIE_SECURE": not DEBUG
 }
 
-# Social Authentication
-SOCIALACCOUNT_PROVIDERS = {
-    "google": {
-        "APP": {
-            "client_id": "YOUR_GOOGLE_CLIENT_ID",
-            "secret": "YOUR_GOOGLE_CLIENT_SECRET",
-            "key": "",
-        }
-    }
-}
-
-# Django REST Framework Configuration
+# REST Framework Settings
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "dj_rest_auth.jwt_auth.JWTCookieAuthentication",
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
 }
 
-REST_USE_JWT = True
-
+# REST Auth Settings
 REST_AUTH = {
     "USE_JWT": True,
-    "JWT_AUTH_COOKIE": "access_token",
-    "JWT_AUTH_REFRESH_COOKIE": "refresh_token",
-    "JWT_AUTH_HTTPONLY": True,
-    "JWT_AUTH_SAMESITE": "Lax",
-    "JWT_AUTH_SECURE": False,
-    "JWT_AUTH_COOKIE_USE_CSRF": False,  # Added
-    "TOKEN_MODEL": None,
-    "SESSION_LOGIN": False,
+    "JWT_AUTH_COOKIE": SIMPLE_JWT["AUTH_COOKIE"],
+    "JWT_AUTH_REFRESH_COOKIE": SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
+    "JWT_AUTH_HTTPONLY": SIMPLE_JWT["AUTH_COOKIE_HTTP_ONLY"],
+    "JWT_AUTH_SAMESITE": SIMPLE_JWT["AUTH_COOKIE_SAMESITE"],
+    "JWT_AUTH_SECURE": SIMPLE_JWT["AUTH_COOKIE_SECURE"],
     "USER_DETAILS_SERIALIZER": "users.serializers.CustomUserDetailsSerializer",
-    "REGISTER_SERIALIZER": "users.serializers.CustomRegisterSerializer",
-    "TOKEN_SERIALIZER": "users.serializers.CustomTokenObtainPairSerializer",
-    "PASSWORD_RESET_SERIALIZER": "users.serializers.CustomPasswordResetSerializer",
-    "JWT_AUTH_RETURN_EXPIRATION": True,
-}
-
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
-    "UPDATE_LAST_LOGIN": True,
-    "ALGORITHM": "HS256",
-    "SIGNING_KEY": SECRET_KEY,
-    "VERIFYING_KEY": None,
-    "AUTH_HEADER_TYPES": ("Bearer",),
-    "USER_ID_FIELD": "id",
-    "USER_ID_CLAIM": "user_id",
-    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
-    "TOKEN_TYPE_CLAIM": "token_type",
-    "JTI_CLAIM": "jti",
-    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
-    "SLIDING_TOKEN_REFRESH_EXP_CLAIM": "refresh_exp",
-    "SLIDING_TOKEN_LIFETIME": timedelta(minutes=5),
-    "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
-    "AUTH_COOKIE": "access_token",
-    "AUTH_COOKIE_REFRESH": "refresh_token",
-    "AUTH_COOKIE_DOMAIN": None,
-    "AUTH_COOKIE_SECURE": False,
-    "AUTH_COOKIE_HTTP_ONLY": True,
-    "AUTH_COOKIE_PATH": "/",
-    "AUTH_COOKIE_SAMESITE": "Lax",
+    "LOGIN_SERIALIZER": "users.serializers.CustomLoginSerializer",
+    "SESSION_LOGIN": False,
 }
 
 
-# URLs and Templates Configuration
-# ------------------------------------------------------------------------------
-ROOT_URLCONF = "backend.urls"
-WSGI_APPLICATION = "backend.wsgi.application"
+# Email Configuration
+EMAIL_BACKEND = 'backend.backends.gmail.GmailOAuth2Backend' if not DEBUG else 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = config('EMAIL_HOST_USER')
+DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER')
+
+# OAuth2 Settings
+GOOGLE_OAUTH2_CLIENT_ID = config('GOOGLE_OAUTH2_CLIENT_ID')
+GOOGLE_OAUTH2_CLIENT_SECRET = config('GOOGLE_OAUTH2_CLIENT_SECRET')
+GOOGLE_OAUTH2_REFRESH_TOKEN = config('GOOGLE_OAUTH2_REFRESH_TOKEN')
+
+# Default Email Settings
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER)
+SERVER_EMAIL = config('SERVER_EMAIL', default=EMAIL_HOST_USER)
+
+# Social Authentication Settings
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': GOOGLE_OAUTH2_CLIENT_ID,
+            'secret': GOOGLE_OAUTH2_CLIENT_SECRET,
+            'key': ''
+        },
+        'SCOPE': [
+            'profile',
+            'email',
+            'openid',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'offline',
+            'prompt': 'select_account consent',
+        },
+        'VERIFIED_EMAIL': True,
+        'CALLBACK_URL': f"{FRONTEND_URL}/auth/google/callback/",
+        'FETCH_EXTRA_DATA': [
+            ('given_name', 'first_name'),
+            ('family_name', 'last_name'),
+            ('picture', 'profile_picture'),
+            ('locale', 'language'),
+        ],
+        'EXCHANGE_TOKEN': True,
+        'ENABLED': True,
+        'OAUTH_PKCE_ENABLED': True,
+    }
+}
+
+# Instead of empty TEMPLATES = []
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -229,7 +246,7 @@ DATABASES = {
 # ------------------------------------------------------------------------------
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
     },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
@@ -273,9 +290,15 @@ DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 # Third-Party Service Configurations
 # ------------------------------------------------------------------------------
+# Postcode API
+IDEAL_POSTCODES_API_KEY = config("IDEAL_POSTCODES_API_KEY")
+DEUTSCHE_POST_API_KEY = config("DEUTSCHE_POST_API_KEY")
+LA_POSTE_API_KEY = config("LA_POSTE_API_KEY")
+
 # Stripe
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = config("STRIPE_PUBLISHABLE_KEY")
+
 
 # OpenAI
 OPENAI_API_KEY = config("OPENAI_API_KEY")
@@ -284,13 +307,19 @@ OPENAI_API_KEY = config("OPENAI_API_KEY")
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://nordiccodeworks.com",
+    'https://accounts.google.com',
 ]
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173,Http://localhost:8000",]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "https://nordiccodeworks.com",
+]
+
 
 # Redis and Caching
 # ------------------------------------------------------------------------------
+# Caching Configuration
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -303,6 +332,9 @@ CACHES = {
         },
     }
 }
+
+# Cache Timeout Settings
+PACKAGE_CACHE_TIMEOUT = 60 * 15
 
 CHANNEL_LAYERS = {
     "default": {
@@ -333,20 +365,6 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "interval_step": 0.2,
     "interval_max": 0.5,
 }
-
-# Email Configuration
-# ------------------------------------------------------------------------------
-if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-else:
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-
-EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
-EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
-EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
-EMAIL_HOST_USER = config("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Content Security Policy
 # ------------------------------------------------------------------------------
@@ -379,14 +397,28 @@ CSP_CONNECT_SRC = (
     "http://localhost:5173",
     "https://nordiccodeworks.com",
     "https://api.openai.com",
+    'https://accounts.google.com',
 )
 CSP_FRAME_SRC = ("'none'",)
 CSP_OBJECT_SRC = ("'none'",)
 
 # Logging Configuration
 # ------------------------------------------------------------------------------
-
-
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+}
 # Default Field Type
 # ------------------------------------------------------------------------------
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

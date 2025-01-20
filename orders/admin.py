@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import ProjectOrder, OrderPayment
+
+from .models import OrderPayment, ProjectOrder
 
 
 @admin.register(ProjectOrder)

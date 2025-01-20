@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import ProjectOrder, OrderPayment
+
+from .models import OrderPayment, ProjectOrder
 
 
 class OrderPaymentSerializer(serializers.ModelSerializer):

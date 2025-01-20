@@ -1,18 +1,42 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-from .models import ProjectConversation, ProjectMessage, MessageAttachment
+from rest_framework.exceptions import ValidationError
+
+from .models import MessageAttachment, ProjectConversation, ProjectMessage
+from .validators import validate_file_extension, validate_file_size
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for MessageAttachment model."""
+
+    file = serializers.FileField(write_only=True)
+
     class Meta:
         model = MessageAttachment
         fields = ["id", "file", "file_name", "file_type", "uploaded_at"]
-        read_only_fields = ["uploaded_at"]
+        read_only_fields = ["uploaded_at", "file_name", "file_type"]
+
+    def validate_file(self, file):
+        """Validate individual file."""
+        try:
+            validate_file_extension(file)
+            validate_file_size(file)
+            return file
+        except DjangoValidationError as e:
+            raise ValidationError(str(e))
 
 
 class ProjectMessageSerializer(serializers.ModelSerializer):
+    """Serializer for ProjectMessage model."""
+
     sender_name = serializers.CharField(source="sender.full_name", read_only=True)
     sender_email = serializers.CharField(source="sender.email", read_only=True)
-    attachments = MessageAttachmentSerializer(many=True, required=False)
+    attachments = MessageAttachmentSerializer(many=True, required=False, read_only=True)
+    files = serializers.ListField(
+        child=serializers.FileField(max_length=100000, allow_empty_file=False),
+        write_only=True,
+        required=False,
+    )
     conversation = serializers.PrimaryKeyRelatedField(
         queryset=ProjectConversation.objects.all()
     )
@@ -31,53 +55,54 @@ class ProjectMessageSerializer(serializers.ModelSerializer):
             "is_read",
             "has_attachment",
             "attachments",
+            "files",
         ]
-        read_only_fields = ["sender", "created_at", "is_read"]
+        read_only_fields = ["sender", "created_at", "is_read", "has_attachment"]
+
+    def validate_files(self, files):
+        """Validate all files."""
+        validated_files = []
+        for file in files:
+            attachment_serializer = MessageAttachmentSerializer(data={"file": file})
+            attachment_serializer.is_valid(raise_exception=True)
+            validated_files.append(file)
+        return validated_files
 
     def get_is_read(self, obj):
+        """Check if the message is read by the user."""
         request = self.context.get("request")
         if request and request.user:
             return request.user in obj.read_by.all()
         return False
 
     def create(self, validated_data):
-        """
-        Create a new ProjectMessage. If attachments are provided, set has_attachment=True
-        and auto-fill file_name/file_type if missing.
-        """
-        attachments_data = validated_data.pop("attachments", [])
-        # If we have any attachments, set has_attachment=True automatically
-        has_attachment = bool(attachments_data)
+        """Create a new ProjectMessage with optional attachments."""
+        # Remove files from validated data if present
+        files = validated_data.pop("files", [])
 
-        # Create the message
+        # Remove has_attachment if present to avoid duplicate argument
+        validated_data.pop("has_attachment", None)
+
+        # Create message
         message = ProjectMessage.objects.create(
-            has_attachment=has_attachment,
-            **validated_data
+            has_attachment=bool(files), **validated_data
         )
 
-        for attachment_data in attachments_data:
-            # Optionally fill out file_name/file_type if the client didn't provide them
-            file_obj = attachment_data.get("file")
-            if file_obj:
-                attachment_data.setdefault("file_name", file_obj.name)
-                attachment_data.setdefault("file_type", file_obj.content_type or "application/octet-stream")
-
-            MessageAttachment.objects.create(message=message, **attachment_data)
+        # Create attachments
+        for file in files:
+            MessageAttachment.objects.create(
+                message=message,
+                file=file,
+                file_name=file.name,
+                file_type=file.content_type or "application/octet-stream",
+            )
 
         return message
 
-    def validate_attachments(self, value):
-        """
-        Validate the attachments (e.g., file size or file extension).
-        """
-        for attachment in value:
-            # Example: Enforce 10MB max size
-            if attachment.file.size > 10 * 1024 * 1024:
-                raise serializers.ValidationError("File size cannot exceed 10MB.")
-        return value
-
 
 class ProjectConversationSerializer(serializers.ModelSerializer):
+    """Serializer for ProjectConversation model."""
+
     messages = ProjectMessageSerializer(many=True, read_only=True)
     project_title = serializers.CharField(source="project.title", read_only=True)
     client_name = serializers.CharField(source="project.user.full_name", read_only=True)
@@ -97,6 +122,7 @@ class ProjectConversationSerializer(serializers.ModelSerializer):
         ]
 
     def get_unread_count(self, obj):
+        """Get the count of unread messages."""
         request = self.context.get("request")
         if request and request.user:
             return obj.messages.exclude(read_by=request.user).count()

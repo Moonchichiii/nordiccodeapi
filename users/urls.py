@@ -1,27 +1,27 @@
-"""URL configurations for user operations."""
-
-from django.urls import path, re_path
-
+from django.urls import path
 from .views import (
-    CustomTokenObtainPairView,
-    CustomTokenRefreshView,
-    CustomConfirmEmailView,
+    CustomDeleteAccountView,
+    CustomEmailVerificationView,
+    CustomPasswordChangeView,
+    CustomPasswordResetConfirmView,
+    CustomUserDetailsView,
 )
 
+app_name = "users"
+
 urlpatterns = [
-    path(
-        "token/",
-        CustomTokenObtainPairView.as_view(),
-        name="token_obtain_pair",
-    ),
-    path(
-        "token/refresh/",
-        CustomTokenRefreshView.as_view(),
-        name="token_refresh",
-    ),
-    re_path(
-        r"^confirm-email/(?P<key>[-:\w]+)/$",
-        CustomConfirmEmailView.as_view(),
-        name="account_confirm_email",
-    ),
+    # User management
+    path("me/", CustomUserDetailsView.as_view(), name="user_details"),
+    path("me/delete/", CustomDeleteAccountView.as_view(), name="account_delete"),
+    
+    # Password management
+    path("password/change/", CustomPasswordChangeView.as_view(), name="password_change"),
+    path("password/reset/confirm/<uidb64>/<token>/",
+         CustomPasswordResetConfirmView.as_view(),
+         name="password_reset_confirm"),
+    
+    # Email verification
+    path("verify-email/<str:key>/",
+         CustomEmailVerificationView.as_view(),
+         name="verify_email"),
 ]

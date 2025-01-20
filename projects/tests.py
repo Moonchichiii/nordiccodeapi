@@ -1,127 +1,248 @@
-from decimal import Decimal
-from django.contrib.auth import get_user_model
-from django.urls import reverse
-from rest_framework import status
+import json
+import logging
 
-from backend.tests.base import BaseTestCase
-from projects.models import Project, ProjectPackage
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient, APITestCase
+
+from .models import Project, ProjectPackage
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
-class ProjectTests(BaseTestCase):
-    """Test cases for the Project model."""
-
+class ProjectPackageTests(APITestCase):
     def setUp(self):
-        super().setUp()
-
-        self.user = self.create_user(
-            email="test@example.com", password="testpass123", full_name="Test User"
+        """Set up test data."""
+        # Create admin user
+        self.admin_user = User.objects.create_user(
+            email="admin@example.com",
+            password="password123",
+            full_name="Admin User",
+            phone_number="1234567890",
+            street_address="123 Main St",
+            city="Anytown",
+            state_or_region="State",
+            postal_code="12345",
+            country="Country",
+            vat_number="VAT123456",
+            accepted_terms=True,
+            marketing_consent=True,
+            is_verified=True,
+            is_staff=True,
+            is_active=True,
+            is_superuser=True,
         )
-        self.authenticate(self.user)
 
+        # Create regular user
+        self.regular_user = User.objects.create_user(
+            email="user@example.com",
+            password="password123",
+            full_name="Regular User",
+            phone_number="0987654321",
+            street_address="456 Side St",
+            city="Othertown",
+            state_or_region="State",
+            postal_code="54321",
+            country="Country",
+            vat_number="VAT654321",
+            accepted_terms=True,
+            marketing_consent=True,
+            is_verified=True,
+            is_active=True,
+        )
+
+        self.client = APIClient()
+        self.packages_list_url = reverse("projects:package-list")
+
+    def test_create_project_package_admin(self):
+        """Test admin can create package."""
+        self.client.force_authenticate(user=self.admin_user)
+        data = {
+            "name": "enterprise",
+            "base_price": "2000.00",
+            "features": {"feature1": "Advanced Analytics"},
+            "tech_stack": ["Python", "Django"],
+            "deliverables": ["Complete App"],
+            "estimated_duration": 60,
+            "maintenance_period": 120,
+            "sla_response_time": 12,
+        }
+        response = self.client.post(self.packages_list_url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(ProjectPackage.objects.count(), 1)
+        self.assertEqual(ProjectPackage.objects.get().name, "enterprise")
+
+    def test_create_project_package_regular_user(self):
+        """Test regular user cannot create package."""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {
+            "name": "enterprise",
+            "base_price": "2000.00",
+            "features": {"feature1": "Advanced Analytics"},
+            "tech_stack": ["Python", "Django"],
+            "deliverables": ["Complete App"],
+            "estimated_duration": 60,
+            "maintenance_period": 120,
+            "sla_response_time": 12,
+        }
+        response = self.client.post(self.packages_list_url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(ProjectPackage.objects.count(), 0)
+
+    def test_invalid_package_data(self):
+        """Test validation of invalid package data."""
+        self.client.force_authenticate(user=self.admin_user)
+        data = {
+            "name": "enterprise",
+            "base_price": "-2000.00",  # Invalid negative price
+            "features": {"feature1": "Advanced Analytics"},
+            "tech_stack": ["Python", "Django"],
+            "deliverables": ["Complete App"],
+            "estimated_duration": -60,  # Invalid negative duration
+            "maintenance_period": 120,
+            "sla_response_time": 12,
+        }
+        response = self.client.post(self.packages_list_url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("base_price", response.data)
+        self.assertIn("estimated_duration", response.data)
+
+
+class ProjectTests(APITestCase):
+    def setUp(self):
+        """Set up test data."""
+        # Create users
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="password123",
+            full_name="Test User",
+            phone_number="1234567890",
+            street_address="123 Main St",
+            city="Anytown",
+            state_or_region="State",
+            postal_code="12345",
+            country="Country",
+            vat_number="VAT123456",
+            accepted_terms=True,
+            marketing_consent=True,
+            is_verified=True,
+            is_active=True,
+        )
+
+        self.staff_user = User.objects.create_user(
+            email="staff@example.com",
+            password="password123",
+            full_name="Staff User",
+            is_staff=True,
+            is_active=True,
+        )
+
+        self.client = APIClient()
+        self.projects_list_url = reverse("projects:project-list")
+
+        # Create test package
         self.package = ProjectPackage.objects.create(
             name="enterprise",
-            base_price=Decimal("1000.00"),
-            features=["Feature A", "Feature B"],
-            tech_stack=["Python", "Django"],
-            deliverables=["Deliverable A"],
+            base_price=1000.00,
+            features={"feature1": "Basic Analytics"},
+            tech_stack=["Django"],
+            deliverables=["Source Code"],
             estimated_duration=30,
+            maintenance_period=60,
+            sla_response_time=24,
         )
 
-        self.list_url = reverse("project-list")
+        # Create test file
+        self.test_file = SimpleUploadedFile(
+            "test_doc.pdf", b"test content", content_type="application/pdf"
+        )
 
-        self.project_data = {
+    def test_create_project_authenticated(self):
+        """Test creating project while authenticated."""
+        self.client.force_authenticate(user=self.user)
+        data = {
             "title": "Test Project",
-            "description": "Test description",
+            "description": "Test Description",
             "status": "planning",
+            "package": self.package.id,
+            "client_specifications": self.test_file,
         }
-
-    def create_test_project(self, **kwargs):
-        """Helper to create a test project."""
-        data = self.project_data.copy()
-        data.update(kwargs)
-        return Project.objects.create(user=self.user, **data)
-
-    def test_create_project(self):
-        """Test creating a project."""
-        response = self.client.post(self.list_url, self.project_data, format="json")
+        response = self.client.post(self.projects_list_url, data, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        project = Project.objects.get(title=self.project_data["title"])
+        self.assertEqual(Project.objects.count(), 1)
+        project = Project.objects.get()
+        self.assertEqual(project.title, "Test Project")
+        self.assertEqual(project.status, "planning")
         self.assertEqual(project.user, self.user)
 
-    def test_list_projects(self):
-        """Test listing all projects."""
-        project1 = self.create_test_project()
-        project2 = self.create_test_project(title="Second Project")
+    def test_create_project_invalid_status(self):
+        """Test creating project with invalid status."""
+        self.client.force_authenticate(user=self.user)
+        data = {
+            "title": "Test Project",
+            "description": "Test Description",
+            "status": "invalid_status",
+            "package": self.package.id,
+        }
+        response = self.client.post(self.projects_list_url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status", response.data)
 
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
+    def test_update_project_status_flow(self):
+        """Test project status transitions."""
+        self.client.force_authenticate(user=self.user)
+        project = Project.objects.create(
+            title="Status Test Project",
+            description="Testing status flow",
+            status="planning",
+            user=self.user,
+            package=self.package,
+        )
 
-        self.assertEqual(len(data), 2)
-        self.assertIn(project1.title, [p["title"] for p in data])
-        self.assertIn(project2.title, [p["title"] for p in data])
+        url = reverse("projects:project-detail", kwargs={"pk": project.id})
 
-    def test_project_filtering(self):
-        """Test filtering projects by status."""
-        self.create_test_project(status="planning")
-        self.create_test_project(status="completed", title="Completed Project")
-
-        response = self.client.get(f"{self.list_url}?status=completed")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["title"], "Completed Project")
-
-    def test_project_update_status(self):
-        """Test updating the status of a project."""
-        project = self.create_test_project()
-        url = reverse("project-detail", args=[project.pk])
-
+        # Planning -> In Progress
         response = self.client.patch(url, {"status": "in_progress"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         project.refresh_from_db()
         self.assertEqual(project.status, "in_progress")
 
-
-class ProjectPackageTests(BaseTestCase):
-    """Test cases for the ProjectPackage model."""
-
-    def test_create_project_package(self):
-        """Test creating a project package."""
-        package = ProjectPackage.objects.create(
-            name="premium",
-            base_price=Decimal("1500.00"),
-            features=["Feature X"],
-            tech_stack=["Node.js", "Vue.js"],
-            deliverables=["App with advanced features"],
-            estimated_duration=45,
-        )
-        self.assertEqual(package.name, "premium")
-        self.assertEqual(package.base_price, Decimal("1500.00"))
-
-    def test_list_project_packages(self):
-        """Test listing all project packages."""
-        ProjectPackage.objects.create(
-            name="enterprise",
-            base_price=Decimal("2000.00"),
-            features=["Feature A", "Feature B"],
-            tech_stack=["React", "Django"],
-            deliverables=["Complete App"],
-            estimated_duration=30,
-        )
-        ProjectPackage.objects.create(
-            name="basic",
-            base_price=Decimal("500.00"),
-            features=["Basic Feature"],
-            tech_stack=["HTML", "CSS"],
-            deliverables=["Static Website"],
-            estimated_duration=10,
+        # In Progress -> Completed (Without assigning staff)
+        response = self.client.patch(url, {"status": "completed"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status", response.data)
+        self.assertIn(
+            "Cannot mark as completed without assigned staff", response.data["status"]
         )
 
-        response = self.client.get(reverse("package-list"))
+        # Assign staff
+        project.assigned_staff.add(self.staff_user)
+
+        # In Progress -> Completed (With assigned staff)
+        response = self.client.patch(url, {"status": "completed"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-        self.assertEqual(len(data), 2)
+        project.refresh_from_db()
+        self.assertEqual(project.status, "completed")
+
+    def test_staff_assignment(self):
+        """Test assigning staff to project."""
+        self.client.force_authenticate(user=self.user)
+        project = Project.objects.create(
+            title="Staff Test Project",
+            description="Testing staff assignment",
+            status="planning",
+            user=self.user,
+            package=self.package,
+        )
+
+        url = reverse("projects:project-detail", kwargs={"pk": project.id})
+        response = self.client.patch(
+            url, {"assigned_staff": [self.staff_user.id]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        project.refresh_from_db()
+        self.assertTrue(self.staff_user in project.assigned_staff.all())

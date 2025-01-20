@@ -190,3 +190,15 @@ locustfile.py
 locustest.py
 locustfile.py
 .coveragerc
+
+# OAuth and credentials
+get_refresh_token.py
+gmail_credentials.json
+*_credentials.json
+token.json
+# Email backend secrets
+backend/backends/gmail.py
+
+# Additional logs
+logs/
+backend/logs/

@@ -5,7 +5,8 @@ This module defines the admin interface configurations for Contact-related model
 
 from django.contrib import admin
 from django.contrib.admin import AdminSite
-from .models import ProjectConversation, ProjectMessage, MessageAttachment
+
+from .models import MessageAttachment, ProjectConversation, ProjectMessage
 
 
 class CustomAdminSite(AdminSite):

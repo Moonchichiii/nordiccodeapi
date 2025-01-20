@@ -1,226 +1,289 @@
-"""
-Test suite for user authentication, registration, token management,
-password change, reset, and email confirmation flows.
-Combines tests from both 'UserAuthTests' and 'PasswordFlowTests'.
-"""
-
+from django.test import RequestFactory, TestCase
+from django.core.exceptions import ValidationError
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
-from django.test import TestCase
-from django.urls import reverse
-
-from rest_framework import status
-from rest_framework.test import APIClient
-
-from allauth.account.models import EmailAddress
+from unittest.mock import patch
+from allauth.account.models import EmailConfirmation
+from django.http import HttpResponse
+from users.utils.middleware import RateLimitMiddleware, EuropeanCountryValidationMiddleware
+from users.serializers import CustomRegisterSerializer
+from users.utils.lockout import AccountLockoutService
+from users.utils.logging import SecurityEventLogger
 
 User = get_user_model()
 
 
-class UserAuthTests(TestCase):
-    """
-    Test cases for:
-    - Registration (complete/minimal data)
-    - Duplicate email registration
-    - Login flows (verified vs unverified)
-    - JWT token refresh with cookie-based auth
-    - Case-insensitive login
-    """
-
+class CustomRegisterSerializerAdditionalTests(TestCase):
     def setUp(self):
-        """Set up test client and common test data."""
-        self.client = APIClient()
-
-        # URLs
-        self.register_url = reverse("rest_register")
-        self.login_url = reverse("rest_login")
-        self.logout_url = reverse("rest_logout")
-        self.token_refresh_url = "/auth/token/refresh/"
-
-        # Test user data
-        self.user_data = {
-            "email": "testuser@example.com",
+        cache.clear()
+        self.valid_data = {
+            "email": "newuser@example.com",
             "password1": "StrongPass123!",
             "password2": "StrongPass123!",
             "full_name": "Test User",
+            "accepted_terms": True,
             "phone_number": "+1234567890",
             "street_address": "123 Test St",
             "city": "Test City",
-            "state_or_region": "Test State",
+            "postal_code": "12345",
+            "country": "GB",
+        }
+
+    def test_validate_invalid_email_format(self):
+        invalid_data = self.valid_data.copy()
+        invalid_data["email"] = "invalid-email-format"
+        serializer = CustomRegisterSerializer(data=invalid_data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("email", serializer.errors)
+
+    def test_validate_invalid_phone_number(self):
+        invalid_data = self.valid_data.copy()
+        invalid_data["phone_number"] = "123"
+        serializer = CustomRegisterSerializer(data=invalid_data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("phone_number", serializer.errors)
+
+    def test_missing_required_fields(self):
+        required_fields = [
+            "email",
+            "password1",
+            "password2",
+            "full_name",
+            "accepted_terms",
+        ]
+        for field in required_fields:
+            invalid_data = self.valid_data.copy()
+            invalid_data.pop(field)
+            serializer = CustomRegisterSerializer(data=invalid_data)
+            self.assertFalse(serializer.is_valid())
+            self.assertIn(field, serializer.errors)
+
+
+class EmailSignalTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            email="testuser@example.com", password="testpassword123"
+        )
+
+    @patch("users.signals.logger")
+    def test_email_confirmation_sent_signal(self, mock_logger):
+        confirmation = EmailConfirmation.create(
+            email_address=self.user.emailaddress_set.create()
+        )
+        confirmation.send()
+        mock_logger.info.assert_called_once()
+
+
+class RateLimitMiddlewareTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+        self.middleware = RateLimitMiddleware(
+            lambda request: HttpResponse("OK", status=200)
+        )
+
+    def test_rate_limit_allows_under_limit(self):
+        request = self.factory.post("/api/auth/login/")
+        response = self.middleware(request)
+        self.assertEqual(response.status_code, 200)
+
+    def test_rate_limit_blocks_over_limit(self):
+        request = self.factory.post("/api/auth/login/")
+        for _ in range(5):
+            response = self.middleware(request)
+            self.assertEqual(response.status_code, 200)
+
+        response = self.middleware(request)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.content.decode(),
+            "Too many login attempts. Please try again later.",
+        )
+
+
+class EuropeanCountryValidationMiddlewareTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_validate_allowed_country(self):
+        middleware = EuropeanCountryValidationMiddleware(lambda x: x)
+        try:
+            middleware.validate_country("FR")
+        except ValidationError:
+            self.fail("Validation raised an exception for an allowed country.")
+
+    def test_validate_disallowed_country(self):
+        middleware = EuropeanCountryValidationMiddleware(lambda x: x)
+        with self.assertRaises(ValidationError):
+            middleware.validate_country("US")
+
+
+class AccountLockoutServiceTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.email = "lockout_test@example.com"
+        self.user = User.objects.create_user(
+            email=self.email, password="testpassword123"
+        )
+
+    def test_increment_login_attempts(self):
+        for _ in range(AccountLockoutService.MAX_LOGIN_ATTEMPTS):
+            allowed = AccountLockoutService.check_and_update_login_attempts(self.email)
+            self.assertTrue(allowed)
+
+    def test_account_lockout_after_max_attempts(self):
+        for _ in range(AccountLockoutService.MAX_LOGIN_ATTEMPTS + 1):
+            allowed = AccountLockoutService.check_and_update_login_attempts(self.email)
+        self.assertFalse(allowed)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+
+    def test_unlock_account(self):
+        AccountLockoutService.check_and_update_login_attempts(self.email)
+        self.user.is_active = False
+        self.user.save()
+        unlocked = AccountLockoutService.unlock_account(self.email)
+        self.assertTrue(unlocked)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+
+    def test_reset_login_attempts(self):
+        AccountLockoutService.check_and_update_login_attempts(self.email)
+        AccountLockoutService.reset_login_attempts(self.email)
+        cached_attempts = cache.get(f"login_attempts_{self.email}")
+        self.assertIsNone(cached_attempts)
+
+
+class SecurityEventLoggerTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_log_login_attempt(self):
+        event_id = SecurityEventLogger.log_login_attempt(
+            user_email="test@example.com", success=True, ip_address="127.0.0.1"
+        )
+        self.assertIsNotNone(event_id)
+
+    def test_log_password_change(self):
+        event_id = SecurityEventLogger.log_password_change(
+            user_email="test@example.com", success=True
+        )
+        self.assertIsNotNone(event_id)
+
+    def test_log_account_creation(self):
+        event_id = SecurityEventLogger.log_account_creation(
+            user_email="test@example.com", registration_method="email"
+        )
+        self.assertIsNotNone(event_id)
+
+    def test_log_security_violation(self):
+        event_id = SecurityEventLogger.log_security_violation(
+            violation_type="Brute Force", details="Excessive login attempts detected."
+        )
+        self.assertIsNotNone(event_id)
+
+
+class AddressValidationServiceTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.valid_data = {
+            "street_address": "123 Test St",
+            "city": "Test City",
             "postal_code": "12345",
             "country": "Test Country",
-            "vat_number": "VAT123456",
-            "accepted_terms": True,
-            "marketing_consent": True,
         }
 
-    def create_verified_user(self):
-        """Helper method to create a verified user in the DB."""
-        user = User.objects.create_user(
-            email=self.user_data["email"], password=self.user_data["password1"]
-        )
-        EmailAddress.objects.create(
-            user=user, email=user.email, verified=True, primary=True
-        )
-        return user
+    @patch("users.address_validation.AddressValidationService.validate_address")
+    def test_address_validation(self, mock_validate_address):
+        mock_validate_address.return_value = {"is_valid": True}
+        from users.utils.address_validation import AddressValidationService
 
-    def test_registration_with_complete_data(self):
-        """Test user registration with all optional fields."""
-        response = self.client.post(
-            self.register_url, self.user_data, format="json"
+        validation_result = AddressValidationService.validate_address(self.valid_data)
+        self.assertTrue(validation_result["is_valid"])
+        mock_validate_address.assert_called_once_with(self.valid_data)
+
+
+def test_validate_email_field_length(self):
+    invalid_data = self.valid_data.copy()
+    invalid_data["email"] = "a" * 300 + "@example.com"
+    serializer = CustomRegisterSerializer(data=invalid_data)
+    self.assertFalse(serializer.is_valid())
+    self.assertIn("email", serializer.errors)
+
+
+class CustomUserModelTests(TestCase):
+    def test_create_user(self):
+        user = User.objects.create_user(email="test@example.com", password="secure123")
+        self.assertEqual(user.email, "test@example.com")
+        self.assertTrue(user.check_password("secure123"))
+
+    def test_create_user_missing_required_fields(self):
+        with self.assertRaises(ValueError):
+            User.objects.create_user(email=None, password="secure123")
+
+
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+
+class UserAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email="user@example.com", 
+            password="password123"
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.user.is_verified = True
+        self.user.save()
 
-        user = User.objects.get(email=self.user_data["email"])
-        for field in [
-            "full_name",
-            "phone_number",
-            "street_address",
-            "city",
-            "state_or_region",
-            "postal_code",
-            "country",
-            "vat_number",
-        ]:
-            self.assertEqual(getattr(user, field), self.user_data[field])
-        self.assertTrue(user.accepted_terms)
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}'
+        )
 
-    def test_registration_with_minimal_data(self):
-        """Test user registration with only required fields."""
-        minimal_data = {
-            "email": "minimal@example.com",
-            "password1": "StrongPass123!",
-            "password2": "StrongPass123!",
+    def test_get_user_details(self):
+        response = self.client.get("/api/users/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['user']['email'], self.user.email)
+
+    def test_unauthenticated_access(self):
+        self.client.credentials()
+        response = self.client.get("/api/users/me/")
+        self.assertEqual(response.status_code, 401)
+
+
+class IntegrationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    @patch("users.address_validation.AddressValidationService.validate_address")
+    def test_register_user_and_retrieve_details(self, mock_validate_address):
+        mock_validate_address.return_value = {"is_valid": True}
+        register_data = {
+            "email": "testuser@example.com",
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "full_name": "Test User",
             "accepted_terms": True,
+            "phone_number": "+1234567890",
+            "street_address": "123 Test St",
+            "city": "Test City",
+            "postal_code": "12345",
+            "country": "GB",
         }
-        response = self.client.post(
-            self.register_url, minimal_data, format="json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        response = self.client.post("/api/auth/registration/", data=register_data)
+        self.assertEqual(response.status_code, 201)
 
-        user = User.objects.get(email=minimal_data["email"])
-        self.assertTrue(user.accepted_terms)
-        self.assertFalse(user.is_verified)
-
-    def test_duplicate_email_registration(self):
-        """Test registration with an existing email address."""
-        User.objects.create_user(
-            email=self.user_data["email"], password="password123"
-        )
-        response = self.client.post(
-            self.register_url, self.user_data, format="json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("email", response.json())
-
-    def test_login_with_unverified_email(self):
-        """Test login attempt with unverified email should fail."""
-        user = User.objects.create_user(
-            email=self.user_data["email"], password=self.user_data["password1"]
-        )
-        EmailAddress.objects.create(
-            user=user, email=user.email, verified=False, primary=True
-        )
-
-        response = self.client.post(
-            self.login_url,
-            {"email": self.user_data["email"], "password": self.user_data["password1"]},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_login_with_verified_email(self):
-        """Test successful login with verified email."""
-        user = User.objects.create_user(
-            email=self.user_data["email"], password=self.user_data["password1"]
-        )
-        EmailAddress.objects.create(
-            user=user, email=user.email, verified=True, primary=True
-        )
+        user = User.objects.get(email="testuser@example.com")
         user.is_verified = True
         user.save()
 
-        response = self.client.post(
-            self.login_url,
-            {"email": self.user_data["email"], "password": self.user_data["password1"]},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        login_data = {"email": "testuser@example.com", "password": "Password123!"}
+        login_response = self.client.post("/api/auth/login/", data=login_data)
+        self.assertEqual(login_response.status_code, 200)
 
-    def test_token_refresh(self):
-        """Test refresh token functionality with cookie-based refresh."""
-        self.create_verified_user()
-
-        # Login => set refresh token in cookie
-        login_resp = self.client.post(
-            self.login_url,
-            {"email": self.user_data["email"], "password": self.user_data["password1"]},
-            format="json",
-        )
-        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
-
-        # Extract refresh_token from cookies
-        refresh_cookie = login_resp.cookies.get("refresh_token")
-        self.assertIsNotNone(refresh_cookie)
-
-        # Attach to client
-        self.client.cookies["refresh_token"] = refresh_cookie.value
-
-        # Request refresh with empty body => server looks at cookie
-        refresh_resp = self.client.post(
-            self.token_refresh_url, {}, format="json"
-        )
-        self.assertEqual(refresh_resp.status_code, status.HTTP_200_OK)
-        self.assertIn("access", refresh_resp.data)
-
-    def test_token_refresh_with_rotation(self):
-        """Test refresh token rotation with cookie-based tokens."""
-        self.create_verified_user()
-
-        # Login => initial refresh
-        login_resp = self.client.post(
-            self.login_url,
-            {"email": self.user_data["email"], "password": self.user_data["password1"]},
-            format="json",
-        )
-        self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
-
-        initial_refresh_cookie = login_resp.cookies.get("refresh_token")
-        self.assertIsNotNone(initial_refresh_cookie)
-        initial_val = initial_refresh_cookie.value
-
-        # 1st refresh
-        self.client.cookies["refresh_token"] = initial_val
-        first_resp = self.client.post(
-            self.token_refresh_url, {}, format="json"
-        )
-        self.assertEqual(first_resp.status_code, status.HTTP_200_OK)
-
-        rotated_cookie = first_resp.cookies.get("refresh_token")
-        self.assertIsNotNone(rotated_cookie)
-        self.assertNotEqual(rotated_cookie.value, initial_val)
-
-        # 2nd refresh => use newly rotated token
-        self.client.cookies["refresh_token"] = rotated_cookie.value
-        second_resp = self.client.post(
-            self.token_refresh_url, {}, format="json"
-        )
-        self.assertEqual(second_resp.status_code, status.HTTP_200_OK)
-        self.assertIn("access", second_resp.data)
-
-    def test_login_with_case_insensitive_email(self):
-        """Test login with an uppercase email address."""
-        self.create_verified_user()
-        uppercase_email = self.user_data["email"].upper()
-        resp = self.client.post(
-            self.login_url,
-            {"email": uppercase_email, "password": self.user_data["password1"]},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-
-    def test_invalid_token_refresh(self):
-        """Test refresh token endpoint with invalid token."""
-        resp = self.client.post(
-            self.token_refresh_url, {"refresh": "invalid-token"}, format="json"
-        )
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        token = login_response.data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        user_response = self.client.get("/api/users/me/")
+        self.assertEqual(user_response.status_code, 200)
+        self.assertEqual(user_response.data["user"]["email"], "testuser@example.com")

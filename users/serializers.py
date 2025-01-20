@@ -1,135 +1,53 @@
-"""
-Serializers for user-related operations including registration, authentication, and profile management.
-"""
-
-from django.conf import settings
-from django.contrib.auth import get_user_model
-
+from dj_rest_auth.serializers import LoginSerializer, UserDetailsSerializer
+from django.contrib.auth import authenticate
+from django.core.validators import RegexValidator
 from rest_framework import serializers
-from dj_rest_auth.registration.serializers import RegisterSerializer
-from dj_rest_auth.serializers import (
-    PasswordResetSerializer,
-    UserDetailsSerializer,
-)
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
 
-User = get_user_model()
+from .address_validation import AddressValidationService
+from .models import CustomUser
 
 
-class CustomRegisterSerializer(RegisterSerializer):
-    """
-    Enhanced registration serializer with additional user profile fields.
-    Handles validation and custom signup logic for the extended user model.
-    """
+class CustomRegisterSerializer(serializers.ModelSerializer):
+    """Serializer for user registration."""
 
+    email = serializers.EmailField(required=True)
+    password1 = serializers.CharField(write_only=True, required=True)
+    password2 = serializers.CharField(write_only=True, required=True)
     full_name = serializers.CharField(
-        required=False, allow_blank=True, max_length=150
+        max_length=150,
+        required=True,
+        validators=[
+            RegexValidator(
+                r"^[a-zA-Z\s]{2,}$",
+                "Full name must contain at least two alphabetic characters",
+            )
+        ],
     )
     phone_number = serializers.CharField(
-        required=False, allow_blank=True, max_length=30
-    )
-    street_address = serializers.CharField(
-        required=False, allow_blank=True, max_length=255
-    )
-    city = serializers.CharField(
-        required=False, allow_blank=True, max_length=100
-    )
-    state_or_region = serializers.CharField(
-        required=False, allow_blank=True, max_length=100
-    )
-    postal_code = serializers.CharField(
-        required=False, allow_blank=True, max_length=20
-    )
-    country = serializers.CharField(
-        required=False, allow_blank=True, max_length=100
-    )
-    vat_number = serializers.CharField(
-        required=False, allow_blank=True, max_length=50
-    )
-
-    accepted_terms = serializers.BooleanField(required=True)
-    marketing_consent = serializers.BooleanField(required=False, default=False)
-
-    def validate_email(self, email):
-        """Validate email uniqueness and format."""
-        email = email.lower().strip()
-        if User.objects.filter(email=email).exists():
-            raise serializers.ValidationError(
-                "A user is already registered with this email address."
+        required=True,
+        validators=[
+            RegexValidator(
+                r"^\+?1?\d{9,15}$",
+                "Phone number must be in international format: '+999999999'",
             )
-        return email
+        ],
+    )
+    street_address = serializers.CharField(required=True)
+    city = serializers.CharField(required=True)
+    postal_code = serializers.CharField(required=True)
+    country = serializers.CharField(required=True)
+    accepted_terms = serializers.BooleanField(
+        required=True,
+        error_messages={"required": "You must accept the Terms of Service"},
+    )
+    marketing_consent = serializers.BooleanField(default=False, required=False)
 
-    def validate(self, data):
-        """Validate registration data including passwords and terms acceptance."""
-        if data.get("password1") != data.get("password2"):
-            raise serializers.ValidationError(
-                {"password2": "Passwords must match."}
-            )
-
-        if not data.get("accepted_terms"):
-            raise serializers.ValidationError(
-                {"accepted_terms": "You must accept the terms of service."}
-            )
-
-        email = data.get("email", "").lower().strip()
-        if email:
-            self.validate_email(email)
-
-        return data
-
-    def get_cleaned_data(self):
-        """Get cleaned data with additional profile fields."""
-        cleaned_data = super().get_cleaned_data()
-        profile_fields = {
-            "full_name": "",
-            "phone_number": "",
-            "street_address": "",
-            "city": "",
-            "state_or_region": "",
-            "postal_code": "",
-            "country": "",
-            "vat_number": "",
-            "accepted_terms": False,
-            "marketing_consent": False,
-        }
-
-        for field in profile_fields:
-            profile_fields[field] = self.validated_data.get(
-                field, profile_fields[field]
-            )
-
-        cleaned_data.update(profile_fields)
-        return cleaned_data
-
-    def custom_signup(self, request, user):
-        """Handle custom signup logic for additional fields."""
-        for field, value in self.cleaned_data.items():
-            if hasattr(user, field):
-                setattr(user, field, value)
-        user.save()
-
-
-class CustomUserDetailsSerializer(UserDetailsSerializer):
-    """
-    Serializer for retrieving and updating user details.
-    Includes all custom profile fields as read-only.
-    """
-
-    full_name = serializers.CharField(read_only=True)
-    phone_number = serializers.CharField(read_only=True)
-    street_address = serializers.CharField(read_only=True)
-    city = serializers.CharField(read_only=True)
-    state_or_region = serializers.CharField(read_only=True)
-    postal_code = serializers.CharField(read_only=True)
-    country = serializers.CharField(read_only=True)
-    vat_number = serializers.CharField(read_only=True)
-    accepted_terms = serializers.BooleanField(read_only=True)
-    marketing_consent = serializers.BooleanField(read_only=True)
-
-    class Meta(UserDetailsSerializer.Meta):
-        model = User
-        fields = UserDetailsSerializer.Meta.fields + (
+    class Meta:
+        model = CustomUser
+        fields = (
+            "email",
+            "password1",
+            "password2",
             "full_name",
             "phone_number",
             "street_address",
@@ -141,56 +59,108 @@ class CustomUserDetailsSerializer(UserDetailsSerializer):
             "accepted_terms",
             "marketing_consent",
         )
-        read_only_fields = ("email",)
 
+    def validate(self, data):
+        """Validate registration data."""
+        if data["password1"] != data["password2"]:
+            raise serializers.ValidationError({"password2": "Passwords do not match"})
 
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    Custom token serializer that includes additional user data in the response.
-    """
+        if not data.get("accepted_terms"):
+            raise serializers.ValidationError(
+                {"accepted_terms": "Terms must be accepted"}
+            )
 
-    @classmethod
-    def get_token(cls, user):
-        """Generate token with any custom claims needed."""
-        token = super().get_token(user)                
-        return token
-
-    def validate(self, attrs):
-        """Validate credentials and return tokens with user data."""
-        data = super().validate(attrs)
-        refresh = self.get_token(self.user)
-
-        data["refresh"] = str(refresh)
-        data["access"] = str(refresh.access_token)
-
-        data["user"] = {
-            "id": self.user.id,
-            "email": self.user.email,
-            "full_name": self.user.full_name,
-            "phone_number": self.user.phone_number,
-            "street_address": self.user.street_address,
-            "city": self.user.city,
-            "state_or_region": self.user.state_or_region,
-            "postal_code": self.user.postal_code,
-            "country": self.user.country,
-            "vat_number": self.user.vat_number,
-            "accepted_terms": self.user.accepted_terms,
-            "marketing_consent": self.user.marketing_consent,
-        }
+        address_valid = AddressValidationService.validate_address(
+            data.get("street_address"),
+            data.get("postal_code"),
+            data.get("city"),
+            data.get("country"),
+        )
+        if not address_valid["is_valid"]:
+            raise serializers.ValidationError({"address": "Invalid address"})
 
         return data
 
+    def create(self, validated_data):
+        """Create a new user."""
+        validated_data.pop("password2")
+        password = validated_data.pop("password1")
+        user = CustomUser.objects.create(**validated_data)
+        user.set_password(password)
+        user.save()
+        return user
 
-class CustomPasswordResetSerializer(PasswordResetSerializer):
-    """
-    Serializer for password reset functionality with custom email template.
-    """
 
-    def get_email_options(self):
-        """Configure email options for password reset."""
-        return {
-            "email_template_name": "password_reset_email.html",
-            "extra_email_context": {
-                "frontend_url": settings.PASSWORD_RESET_FRONTEND_URL
-            },
-        }
+class CustomLoginSerializer(LoginSerializer):
+    """Serializer for user login."""
+
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(
+        style={"input_type": "password"}, trim_whitespace=False, write_only=True
+    )
+
+    def validate(self, attrs):
+        """Validate login credentials."""
+        email = attrs.get("email", "").lower().strip()
+        password = attrs.get("password")
+
+        if not email or not password:
+            raise serializers.ValidationError('Must include "email" and "password"')
+
+        user = authenticate(
+            request=self.context.get("request"), email=email, password=password
+        )
+
+        if not user:
+            raise serializers.ValidationError(
+                "Unable to log in with provided credentials"
+            )
+
+        if not user.is_verified:
+            raise serializers.ValidationError(
+                "Email not verified. Please verify your email first."
+            )
+
+        attrs["user"] = user
+        return attrs
+
+
+class CustomUserDetailsSerializer(UserDetailsSerializer):
+    """Serializer for user details."""
+
+    class Meta(UserDetailsSerializer.Meta):
+        model = CustomUser
+        fields = UserDetailsSerializer.Meta.fields + (
+            "full_name",
+            "phone_number",
+            "street_address",
+            "city",
+            "state_or_region",
+            "postal_code",
+            "country",
+            "vat_number",
+            "accepted_terms",
+            "marketing_consent",
+            "is_verified",
+        )
+        read_only_fields = ("email", "is_verified", "accepted_terms")
+
+    def validate_phone_number(self, value):
+        """Validate phone number format."""
+        if not RegexValidator(r"^\+?1?\d{9,15}$")(value):
+            raise serializers.ValidationError("Invalid phone number format")
+        return value
+
+    def validate(self, data):
+        """Validate user details."""
+        address_fields = ["street_address", "city", "postal_code", "country"]
+        if any(field in data for field in address_fields):
+            address_valid = AddressValidationService.validate_address(
+                data.get("street_address"),
+                data.get("postal_code"),
+                data.get("city"),
+                data.get("country"),
+            )
+            if not address_valid["is_valid"]:
+                raise serializers.ValidationError({"address": "Invalid address"})
+        return data

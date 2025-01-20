@@ -1,9 +1,9 @@
 import stripe
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from django.utils.log import getLogger
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from django.utils.log import getLogger
 
 from .models import OrderPayment
 from .services import PaymentService

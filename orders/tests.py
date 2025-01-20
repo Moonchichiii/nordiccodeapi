@@ -1,13 +1,14 @@
 from decimal import Decimal
 from unittest.mock import patch
-from django.urls import reverse
+
 from django.contrib.admin.sites import AdminSite
+from django.urls import reverse
 from rest_framework import status
+
 from backend.tests.base import BaseTestCase
-from projects.models import ProjectPackage
-from orders.models import OrderPayment, ProjectOrder
 from orders.admin import ProjectOrder
-from rest_framework import status
+from orders.models import OrderPayment, ProjectOrder
+from projects.models import ProjectPackage
 
 
 class OrderTestCase(BaseTestCase):

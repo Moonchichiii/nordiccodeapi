@@ -8,6 +8,7 @@ dj_database_url
 django-cloudinary-storage
 django-cors-headers
 django-csp
+django-extensions
 django-filter
 django-ratelimit
 djangorestframework
@@ -24,6 +25,6 @@ stripe
 isort
 PyJWT
 locust
-
-
-
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client

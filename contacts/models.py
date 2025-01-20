@@ -1,13 +1,12 @@
-from django.db import models
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+
 from .validators import validate_file_extension, validate_file_size
 
 
 class ProjectConversation(models.Model):
-    """
-    Represents a conversation thread for an active project.
-    Only created when a project moves to active status after deposit payment.
-    """
+    """Conversation for a project."""
 
     project = models.OneToOneField(
         "projects.Project", on_delete=models.CASCADE, related_name="conversation"
@@ -24,17 +23,20 @@ class ProjectConversation(models.Model):
         ]
 
     def __str__(self):
+        """Return conversation info."""
         return f"Conversation for {self.project.title}"
 
     def get_participants(self):
-        """Get all participants in the conversation (client and staff)"""
+        """Return participants."""
         return [self.project.user] + list(self.staff_participants.all())
+
+    def unread_count(self, user):
+        """Return unread messages count."""
+        return self.messages.exclude(read_by=user).count()
 
 
 class ProjectMessage(models.Model):
-    """
-    Individual messages within a project conversation.
-    """
+    """Message in a project conversation."""
 
     conversation = models.ForeignKey(
         ProjectConversation, on_delete=models.CASCADE, related_name="messages"
@@ -59,28 +61,39 @@ class ProjectMessage(models.Model):
         ]
 
     def __str__(self):
+        """Return message info."""
         return f"Message from {self.sender.email} at {self.created_at}"
 
     def mark_read_by(self, user):
-        """Mark message as read by a user"""
+        """Mark message read by user."""
         self.read_by.add(user)
+
+    @classmethod
+    def mark_messages_read(cls, conversation, user):
+        """Bulk mark messages as read."""
+        for msg in conversation.messages.exclude(read_by=user):
+            msg.read_by.add(user)
 
 
 class MessageAttachment(models.Model):
-    """
-    Attachments for project messages.
-    """
+    """Attachment for a project message."""
 
     message = models.ForeignKey(
-        ProjectMessage, on_delete=models.CASCADE, related_name="attachments"
+        "contacts.ProjectMessage", on_delete=models.CASCADE, related_name="attachments"
     )
     file = models.FileField(
-        upload_to="project_messages/%Y/%m/",
-        validators=[validate_file_size, validate_file_extension],
+        upload_to="attachments/",
+        validators=[validate_file_extension, validate_file_size],
     )
-    file_name = models.CharField(max_length=255)
-    file_type = models.CharField(max_length=100)
+    file_name = models.CharField(max_length=255, blank=True)
+    file_type = models.CharField(max_length=100, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["message", "uploaded_at"]),
+        ]
+
     def __str__(self):
+        """Return file name."""
         return self.file_name

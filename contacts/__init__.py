@@ -1,1 +1,1 @@
-default_app_config = 'contacts.apps.ContactsConfig'
+default_app_config = "contacts.apps.ContactsConfig"
