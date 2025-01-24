@@ -5,10 +5,10 @@ from django.contrib.auth import get_user_model
 from unittest.mock import patch
 from allauth.account.models import EmailConfirmation
 from django.http import HttpResponse
-from users.utils.middleware import RateLimitMiddleware, EuropeanCountryValidationMiddleware
+from users.middleware import RateLimitMiddleware, EuropeanCountryValidationMiddleware
 from users.serializers import CustomRegisterSerializer
-from users.utils.lockout import AccountLockoutService
-from users.utils.logging import SecurityEventLogger
+from users.lockout import AccountLockoutService
+from users.security_logging import SecurityEventLogger
 
 User = get_user_model()
 

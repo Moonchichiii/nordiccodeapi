@@ -128,7 +128,7 @@ class Project(models.Model):
 
     class StatusChoices(models.TextChoices):
         PLANNING = "planning", _("Planning Phase")
-        ONGOING = "ongoing", _("Ongoing")
+        PENDING_PAYMENT = "pending_payment", _("Pending Payment")
         IN_PROGRESS = "in_progress", _("In Progress")
         COMPLETED = "completed", _("Completed")
 
@@ -161,6 +161,8 @@ class Project(models.Model):
         default=StatusChoices.PLANNING,
         help_text=_("Current project status"),
     )
+    planning_completed = models.BooleanField(default=False)
+    planning_locked = models.BooleanField(default=True)  # Unlocked after payment
     created_at = models.DateTimeField(
         auto_now_add=True, help_text=_("Project creation timestamp")
     )

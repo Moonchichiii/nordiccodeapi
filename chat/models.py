@@ -79,7 +79,7 @@ class MessageAttachment(models.Model):
     """Attachment for a project message."""
 
     message = models.ForeignKey(
-        "contacts.ProjectMessage", on_delete=models.CASCADE, related_name="attachments"
+        "chat.ProjectMessage", on_delete=models.CASCADE, related_name="attachments"
     )
     file = models.FileField(
         upload_to="attachments/",

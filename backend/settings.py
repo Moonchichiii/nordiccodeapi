@@ -69,9 +69,10 @@ INSTALLED_APPS = [
     "channels",
     "csp",
     # Local apps
-    "users",
-    "contacts",
+    "users",  
     "projects",
+    "planner",
+    "chat",
     "chatbot",
     "orders",
 ]

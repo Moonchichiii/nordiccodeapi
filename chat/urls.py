@@ -11,7 +11,7 @@ router = DefaultRouter()
 router.register(r"conversations", ProjectConversationViewSet, basename="conversations")
 router.register(r"messages", ProjectMessageViewSet, basename="messages")
 
-app_name = "contacts"
+app_name = "chat"
 
 urlpatterns = [
     path("", include(router.urls)),
