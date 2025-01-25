@@ -10,7 +10,7 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
     path("api/chat/", include("chat.urls")),
     path("api/projects/", include("projects.urls")),
-     path("api/planner/", include("planner.urls")),
+    path("api/planner/", include("planner.urls")),
     path("api/orders/", include("orders.urls")),
     path("api/chatbot/", include("chatbot.urls")),
 ]

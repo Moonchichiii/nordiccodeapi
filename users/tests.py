@@ -244,7 +244,7 @@ class UserAPITests(TestCase):
     def test_get_user_details(self):
         response = self.client.get("/api/users/me/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['user']['email'], self.user.email)
+        self.assertEqual(response.data['email'], self.user.email)
 
     def test_unauthenticated_access(self):
         self.client.credentials()
