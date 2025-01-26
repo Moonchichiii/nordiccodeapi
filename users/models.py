@@ -7,7 +7,9 @@ from .managers import CustomUserManager
 
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
-    # Authentication fields
+    """
+    Custom user model with additional fields.
+    """
     email = models.EmailField(
         "email address",
         unique=True,
@@ -15,8 +17,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         error_messages={"unique": "A user with that email already exists"},
     )
     is_verified = models.BooleanField("email verified", default=False, db_index=True)
-
-    # Required personal info
     full_name = models.CharField(
         "full name",
         max_length=150,
@@ -29,22 +29,14 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         blank=False,
         validators=[RegexValidator(r"^\+?1?\d{9,15}$")],
     )
-
-    # Required address
     street_address = models.CharField("street address", max_length=255, blank=False)
     city = models.CharField("city", max_length=100, blank=False)
     postal_code = models.CharField("postal code", max_length=20, blank=False)
     country = models.CharField("country", max_length=100, blank=False)
-
-    # Optional fields
     state_or_region = models.CharField("state/region", max_length=100, blank=True)
     vat_number = models.CharField("VAT number", max_length=50, blank=True)
-
-    # Required terms
     accepted_terms = models.BooleanField("accepted terms", default=False, db_index=True)
     marketing_consent = models.BooleanField("marketing consent", default=False)
-
-    # System fields
     is_staff = models.BooleanField("staff status", default=False)
     is_active = models.BooleanField("active", default=True)
     date_joined = models.DateTimeField("date joined", default=timezone.now)
@@ -60,3 +52,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=["email", "is_verified"]),
             models.Index(fields=["is_staff", "is_active"]),
         ]
+
+    def get_full_name(self):
+        return self.full_name
+
+    def get_short_name(self):
+        if self.full_name:
+            return self.full_name.split()[0]
+        return ""
