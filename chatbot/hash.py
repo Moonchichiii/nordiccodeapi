@@ -2,11 +2,6 @@
 
 This module provides functions to hash and verify messages and secrets using
 HMAC-SHA256 and SHA-256 algorithms with optional salting and peppering.
-
-Functions:
-    hash_message: Hash messages using HMAC-SHA256 with pepper.
-    hash_secret: Hash secrets using SHA-256 with optional salt.
-    verify_message_hash: Verify message against its hash.
 """
 
 import hashlib
@@ -21,10 +16,10 @@ def hash_message(message: str) -> str:
     """Hash a message using HMAC-SHA256 with pepper.
 
     Args:
-        message: The message string to hash.
+        message (str): The message string to hash.
 
     Returns:
-        A hexadecimal string representing the hash.
+        str: A hexadecimal string representing the hash.
 
     Raises:
         ValueError: If message is not a string.
@@ -42,11 +37,11 @@ def hash_secret(secret: str, salt: str | None = None) -> str:
     """Hash a secret using SHA-256 with optional salt.
 
     Args:
-        secret: The secret string to hash.
-        salt: Optional salt string to add to the hash.
+        secret (str): The secret string to hash.
+        salt (str | None): Optional salt string to add to the hash.
 
     Returns:
-        A hexadecimal string representing the hash.
+        str: A hexadecimal string representing the hash.
 
     Raises:
         ValueError: If secret is not a string.
@@ -65,11 +60,11 @@ def verify_message_hash(message: str, message_hash: str) -> bool:
     """Verify if a message matches its hash.
 
     Args:
-        message: The original message string.
-        message_hash: The expected hash string.
+        message (str): The original message string.
+        message_hash (str): The expected hash string.
 
     Returns:
-        True if the message matches the hash, False otherwise.
+        bool: True if the message matches the hash, False otherwise.
 
     Raises:
         ValueError: If either argument is not a string.

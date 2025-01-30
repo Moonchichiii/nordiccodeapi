@@ -10,7 +10,6 @@ from projects.models import Project
 from .models import ProjectConversation
 
 
-
 @receiver(post_save, sender=Project)
 def create_project_conversation(sender, instance, created, **kwargs):
     if created and instance.status != "planning":

@@ -7,14 +7,7 @@ from .models import Chatbot, Message
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    """
-    Admin configuration for the Message model.
-
-    Attributes:
-        list_display: Fields to display in the admin list view
-        search_fields: Fields available for searching
-        readonly_fields: Fields that cannot be modified
-    """
+    """Admin configuration for the Message model."""
 
     list_display = (
         "user",
@@ -32,14 +25,7 @@ class MessageAdmin(admin.ModelAdmin):
 
 @admin.register(Chatbot)
 class ChatbotAdmin(admin.ModelAdmin):
-    """
-    Admin configuration for the Chatbot model.
-
-    Attributes:
-        list_display: Fields to display in the admin list view
-        search_fields: Fields available for searching
-        readonly_fields: Fields that cannot be modified
-    """
+    """Admin configuration for the Chatbot model."""
 
     list_display = ("name", "created_at")
     search_fields = ("name",)

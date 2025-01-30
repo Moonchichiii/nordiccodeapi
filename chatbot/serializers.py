@@ -1,8 +1,8 @@
 """
 Serializers and service for chatbot functionality using OpenAI API.
 
-This module provides serializers for handling chatbot requests/responses and a service
-class for interacting with the OpenAI API.
+This module provides serializers for handling chatbot requests/responses
+and a service class for interacting with the OpenAI API.
 """
 
 import os
@@ -20,9 +20,8 @@ class ChatbotRequestSerializer(serializers.Serializer):
     prompt = serializers.CharField(max_length=1024)
     message = serializers.CharField(max_length=1024)
 
-    def create(self, validated_data):
-        # Provide a body or remove the method if unused
-        # For example:
+    def create(self, validated_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new chatbot request."""
         return validated_data
 
 
@@ -32,10 +31,12 @@ class ChatbotResponseSerializer(serializers.Serializer):
     prompt = serializers.CharField(max_length=1024)
     response = serializers.CharField(max_length=2048, read_only=True)
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new chatbot response."""
         return validated_data
 
-    def update(self, instance, validated_data):
+    def update(self, instance: Any, validated_data: Dict[str, Any]) -> Any:
+        """Update an existing chatbot response."""
         instance.update(validated_data)
         return instance
 
@@ -67,7 +68,9 @@ class ChatbotService:
         openai.api_key = os.getenv("OPENAI_API_KEY", settings.OPENAI_API_KEY)
         try:
             response = openai.Completion.create(
-                engine="davinci", prompt=prompt, max_tokens=150
+                engine="davinci",
+                prompt=prompt,
+                max_tokens=150
             )
             return response.choices[0].text.strip()
         except (openai.error.OpenAIError, KeyError, IndexError) as exc:

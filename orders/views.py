@@ -19,6 +19,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 class ProjectOrderViewSet(viewsets.ModelViewSet):
+    """ViewSet for handling Project Orders."""
     serializer_class = ProjectOrderSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -32,6 +33,7 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
+        """Return queryset filtered by the current user."""
         return (
             ProjectOrder.objects.select_related("user", "package")
             .prefetch_related("payments")
@@ -40,18 +42,22 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
+        """Create a new order and calculate amounts."""
         order = serializer.save(
-            user=self.request.user, status="inquiry", payment_status="awaiting_deposit"
+            user=self.request.user, status="inquiry",
+            payment_status="awaiting_deposit"
         )
         self.calculate_amounts(order)
 
-    def calculate_amounts(self, order):
+    def calculate_amounts(self, order: ProjectOrder) -> None:
+        """Calculate deposit and remaining amounts for the order."""
         order.deposit_amount = order.total_amount * Decimal("0.30")
         order.remaining_amount = order.total_amount - order.deposit_amount
         order.save(update_fields=["deposit_amount", "remaining_amount"])
 
     @transaction.atomic
     def perform_update(self, serializer):
+        """Update the order status if provided."""
         instance = serializer.save()
         if "status" in serializer.validated_data:
             instance.status = serializer.validated_data["status"]
@@ -59,8 +65,8 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def process_deposit(self, request, pk=None):
+        """Process deposit payment for an order."""
         order = self.get_object()
-
         try:
             payment_intent = stripe.PaymentIntent.create(
                 amount=int(order.deposit_amount * 100),
@@ -68,7 +74,6 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
                 customer=request.user.stripe_customer_id,
                 metadata={"order_id": order.id, "payment_type": "deposit"},
             )
-
             payment = OrderPayment.objects.create(
                 order=order,
                 amount=order.deposit_amount,
@@ -76,7 +81,6 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
                 payment_type="deposit",
                 status="pending",
             )
-
             return Response(
                 {
                     "client_secret": payment_intent.client_secret,
@@ -94,27 +98,23 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def confirm_deposit(self, request, pk=None):
+        """Confirm deposit payment for an order."""
         order = self.get_object()
         payment = get_object_or_404(
             OrderPayment, order=order, payment_type="deposit", status="pending"
         )
-
         try:
             stripe_payment = stripe.PaymentIntent.retrieve(payment.stripe_payment_id)
-
             if stripe_payment.status == "succeeded":
                 payment.status = "completed"
                 payment.save(update_fields=["status"])
-
                 order.payment_status = "deposit_paid"
                 order.status = "deposit_paid"
                 order.save(update_fields=["payment_status", "status"])
-
                 NotificationService.send_payment_notification(
                     payment, "payment_success"
                 )
                 return Response({"status": "deposit_confirmed"})
-
             return Response(
                 {"error": "Payment not succeeded"}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -124,15 +124,14 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def process_milestone_payment(self, request, pk=None):
+        """Process milestone payment for an order."""
         order = self.get_object()
         milestone_id = request.data.get("milestone_id")
-
         if not milestone_id:
             return Response(
                 {"error": "milestone_id is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         try:
             amount = PaymentService.calculate_milestone_payment(order, milestone_id)
             payment_intent = stripe.PaymentIntent.create(
@@ -145,7 +144,6 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
                     "milestone_id": milestone_id,
                 },
             )
-
             payment = OrderPayment.objects.create(
                 order=order,
                 amount=amount,
@@ -153,7 +151,6 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
                 payment_type="milestone",
                 status="pending",
             )
-
             return Response(
                 {
                     "client_secret": payment_intent.client_secret,
@@ -165,10 +162,12 @@ class ProjectOrderViewSet(viewsets.ModelViewSet):
 
 
 class CommissionDashboardView(TemplateView):
+    """View for displaying commission dashboard."""
     template_name = "orders/commission_dashboard.html"
     permission_classes = [IsAdminUser]
 
     def get_context_data(self, **kwargs):
+        """Return context data for the commission dashboard."""
         context = super().get_context_data(**kwargs)
         context["pending_commissions"] = ProjectOrder.objects.filter(
             commission_status="pending"
@@ -180,10 +179,12 @@ class CommissionDashboardView(TemplateView):
 
 
 class PaymentReportView(TemplateView):
+    """View for displaying payment reports."""
     template_name = "orders/payment_report.html"
     permission_classes = [IsAdminUser]
 
     def get_context_data(self, **kwargs):
+        """Return context data for the payment report."""
         context = super().get_context_data(**kwargs)
         context["total_payments"] = OrderPayment.objects.filter(status="completed")
         context["recent_payments"] = OrderPayment.objects.filter(

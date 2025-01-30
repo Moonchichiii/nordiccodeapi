@@ -1,8 +1,9 @@
 # planner/services.py
-from openai import OpenAI
-from django.conf import settings
 import json
 import logging
+
+from django.conf import settings
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 client = OpenAI(api_key=settings.OPENAI_API_KEY)

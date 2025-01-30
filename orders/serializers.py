@@ -4,6 +4,8 @@ from .models import OrderPayment, ProjectOrder
 
 
 class OrderPaymentSerializer(serializers.ModelSerializer):
+    """Serializer for OrderPayment model."""
+
     class Meta:
         model = OrderPayment
         fields = ["id", "amount", "payment_type", "status", "created_at"]
@@ -11,6 +13,8 @@ class OrderPaymentSerializer(serializers.ModelSerializer):
 
 
 class ProjectOrderSerializer(serializers.ModelSerializer):
+    """Serializer for ProjectOrder model."""
+    
     payments = OrderPaymentSerializer(many=True, read_only=True)
 
     class Meta:

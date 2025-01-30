@@ -1,6 +1,7 @@
 import pytest
 from allauth.account.models import EmailAddress
 from channels.testing import WebsocketCommunicator
+from contacts.models import ProjectConversation, ProjectMessage
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -9,7 +10,6 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from backend.asgi import application
-from contacts.models import ProjectConversation, ProjectMessage
 from projects.models import Project
 
 User = get_user_model()

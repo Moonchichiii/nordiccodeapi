@@ -1,7 +1,9 @@
 
-from django.db import models
 from django.conf import settings
+from django.db import models
+
 from projects.models import Project
+
 
 class ProjectPlan(models.Model):
     """Stores AI-generated project planning data"""

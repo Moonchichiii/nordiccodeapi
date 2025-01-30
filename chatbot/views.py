@@ -18,7 +18,6 @@ from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 from .hash import hash_message
 
-# Initialize OpenAI client and logger
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,9 @@ def get_cached_response(user_message: str) -> Optional[str]:
     cache_key = f"secure_chatbot_response_{hash_message(user_message)}"
     cached_response = cache.get(cache_key)
     logger.info(
-        "Cache %s for message: %s", "hit" if cached_response else "miss", user_message
+        "Cache %s for message: %s",
+        "hit" if cached_response else "miss",
+        user_message,
     )
     return cached_response
 
@@ -67,14 +68,7 @@ def detect_language(user_message: str) -> str:
         return "en"
 
     swedish_greetings: List[str] = [
-        "hej",
-        "hallå",
-        "tjena",
-        "hejsan",
-        "hej!",
-        "hallå!",
-        "tjena!",
-        "hejsan!",
+        "hej", "hallå", "tjena", "hejsan", "hej!", "hallå!", "tjena!", "hejsan!",
     ]
     if user_message.lower() in swedish_greetings:
         logger.info("Detected Swedish via keyword matching: %s", user_message)
@@ -83,7 +77,9 @@ def detect_language(user_message: str) -> str:
     try:
         detected_languages = detect_langs(user_message)
         logger.info(
-            'Language detection results for "%s": %s', user_message, detected_languages
+            'Language detection results for "%s": %s',
+            user_message,
+            detected_languages,
         )
 
         for lang in detected_languages:

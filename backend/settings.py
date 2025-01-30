@@ -9,8 +9,11 @@ from datetime import timedelta
 from pathlib import Path
 import dj_database_url
 from decouple import config
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
+from .google import GoogleService
+
+
+google_service = GoogleService()
+google_config = google_service.get_config()
 
 # =============================================================================
 # CORE DJANGO CONFIGURATION
@@ -150,6 +153,10 @@ ACCOUNT_CONFIRM_EMAIL_ON_GET = True
 ACCOUNT_AUTHENTICATION_METHOD = "email"
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
+
+# Email Verification URLs - Single source of truth
+ACCOUNT_EMAIL_CONFIRMATION_URL = "verify-email"
 ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = f"{FRONTEND_URL}/email-verified"
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = f"{FRONTEND_URL}/email-verified"
 
@@ -170,10 +177,7 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SECURE": not DEBUG
 }
 
-# =============================================================================
-# REST FRAMEWORK CONFIGURATION
-# =============================================================================
-
+# REST Framework and Auth Configuration
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "dj_rest_auth.jwt_auth.JWTCookieAuthentication",
@@ -194,57 +198,42 @@ REST_AUTH = {
     "JWT_AUTH_SECURE": SIMPLE_JWT["AUTH_COOKIE_SECURE"],
     "USER_DETAILS_SERIALIZER": "users.serializers.CustomUserDetailsSerializer",
     "LOGIN_SERIALIZER": "users.serializers.CustomLoginSerializer",
+    "REGISTER_SERIALIZER": "users.serializers.CustomRegisterSerializer",
     "SESSION_LOGIN": False,
+    "OLD_PASSWORD_FIELD_ENABLED": True,
+    "PASSWORD_RESET_USE_SITES_DOMAIN": False,
 }
 
-# =============================================================================
-# EMAIL CONFIGURATION
-# =============================================================================
-
-EMAIL_BACKEND = 'backend.backends.gmail.GmailOAuth2Backend' if not DEBUG else 'django.core.mail.backends.console.EmailBackend'
+ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
+# Email Configuration
+EMAIL_BACKEND = 'backend.google.GmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER')
-SERVER_EMAIL = config('SERVER_EMAIL', default=EMAIL_HOST_USER)
+EMAIL_HOST_USER = 'contact@nordiccodeworks.com'
+DEFAULT_FROM_EMAIL = 'Nordic Code Works <contact@nordiccodeworks.com>'
 
-# OAuth2 Settings
-GOOGLE_OAUTH2_CLIENT_ID = config('GOOGLE_OAUTH2_CLIENT_ID')
-GOOGLE_OAUTH2_CLIENT_SECRET = config('GOOGLE_OAUTH2_CLIENT_SECRET')
-GOOGLE_OAUTH2_REFRESH_TOKEN = config('GOOGLE_OAUTH2_REFRESH_TOKEN')
 
-# =============================================================================
-# SOCIAL AUTH CONFIGURATION
-# =============================================================================
+# Google OAuth2 Configuration 
+GOOGLE_OAUTH2_CLIENT_ID = google_config['GOOGLE_OAUTH2_CLIENT_ID']
+GOOGLE_OAUTH2_CLIENT_SECRET = google_config['GOOGLE_OAUTH2_CLIENT_SECRET']
+GOOGLE_OAUTH2_REFRESH_TOKEN = google_config['GOOGLE_OAUTH2_REFRESH_TOKEN']
 
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'APP': {
-            'client_id': GOOGLE_OAUTH2_CLIENT_ID,
-            'secret': GOOGLE_OAUTH2_CLIENT_SECRET,
-            'key': ''
-        },
-        'SCOPE': [
-            'profile',
-            'email',
-            'openid',
-        ],
-        'AUTH_PARAMS': {
-            'access_type': 'offline',
-            'prompt': 'select_account consent',
-        },
-        'VERIFIED_EMAIL': True,
-        'CALLBACK_URL': f"{FRONTEND_URL}/auth/google/callback/",
-        'FETCH_EXTRA_DATA': [
-            ('given_name', 'first_name'),
-            ('family_name', 'last_name'),
-            ('picture', 'profile_picture'),
-            ('locale', 'language'),
-        ],
-        'EXCHANGE_TOKEN': True,
-        'ENABLED': True,
-        'OAUTH_PKCE_ENABLED': True,
+# Social Auth Configuration - Use config directly, no duplication
+SOCIALACCOUNT_PROVIDERS = google_config['SOCIALACCOUNT_PROVIDERS']
+
+# Email Rate Limits
+EMAIL_RATE_LIMIT = {
+    "verify_email": "3/h",
+    "password_reset": "3/h",
+}
+
+
+ADDRESS_VALIDATION = {
+    'NOMINATIM_USER_AGENT': f'{PROJECT_NAME}/1.0',
+    'CACHE_TIMEOUT': 86400,
+    'RATE_LIMIT': {
+        'NOMINATIM': 1,
     }
 }
 
@@ -424,30 +413,16 @@ CSP_CONNECT_SRC = (
     "https://nordiccodeworks.com",
     "https://api.openai.com",
     'https://accounts.google.com',
+    'https://nominatim.openstreetmap.org',
 )
 CSP_FRAME_SRC = ("'none'",)
 CSP_OBJECT_SRC = ("'none'",)
-OBJECT_SRC = ("'none'",)
 
 
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-        },
-    },
-}
+
 # Default Field Type
 # ------------------------------------------------------------------------------
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

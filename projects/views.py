@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
@@ -14,35 +15,27 @@ from rest_framework.response import Response
 from .models import Project, ProjectPackage
 from .serializers import ProjectPackageSerializer, ProjectSerializer
 
-# Setup logger
 logger = logging.getLogger(__name__)
 
 
 class ProjectPackageViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing Project Packages.
-    Admin users can create, update, and delete packages.
-    Regular authenticated users can view packages.
-    """
+    """Manage Project Packages."""
 
     queryset = ProjectPackage.objects.all()
     serializer_class = ProjectPackageSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
-    def get_permissions(self):
-        """
-        Assign permissions based on action.
-        - Admin users can create, update, partially update, and delete.
-        - Regular users can only view (list/retrieve).
-        """
+    def get_permissions(self) -> list:
+        """Assign permissions based on action."""
         if self.action in ["create", "update", "partial_update", "destroy"]:
             permission_classes = [IsAuthenticated, IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: ProjectPackageSerializer) -> None:
+        """Create a new project package."""
         try:
             with transaction.atomic():
                 project_package = serializer.save()
@@ -57,7 +50,8 @@ class ProjectPackageViewSet(viewsets.ModelViewSet):
             logger.error(f"Unexpected error creating package: {str(e)}")
             raise
 
-    def perform_update(self, serializer):
+    def perform_update(self, serializer: ProjectPackageSerializer) -> None:
+        """Update an existing project package."""
         try:
             with transaction.atomic():
                 project_package = serializer.save()
@@ -74,7 +68,7 @@ class ProjectPackageViewSet(viewsets.ModelViewSet):
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    """ViewSet for Project CRUD operations."""
+    """Manage Projects."""
 
     serializer_class = ProjectSerializer
     permission_classes = [IsAuthenticated]
@@ -91,14 +85,14 @@ class ProjectViewSet(viewsets.ModelViewSet):
     search_fields = ["title", "description"]
     ordering_fields = ["created_at", "title"]
 
-    def get_queryset(self):
-        # Remove manual search filtering
-        queryset = Project.objects.select_related("user", "package").filter(
+    def get_queryset(self) -> Any:
+        """Return projects for the current authenticated user."""
+        return Project.objects.select_related("user", "package").filter(
             user=self.request.user
         )
-        return queryset
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: ProjectSerializer) -> None:
+        """Create a new project."""
         try:
             with transaction.atomic():
                 project = serializer.save(user=self.request.user)
@@ -112,13 +106,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
             logger.error(f"Unexpected error creating project: {str(e)}")
             raise
 
-    def perform_update(self, serializer):
+    def perform_update(self, serializer: ProjectSerializer) -> None:
+        """Update an existing project."""
         try:
             with transaction.atomic():
                 instance = serializer.instance
                 new_status = serializer.validated_data.get("status")
 
-                # Validate status transition
                 if new_status == Project.StatusChoices.COMPLETED:
                     if not instance.assigned_staff.exists():
                         raise ValidationError(
@@ -136,17 +130,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
             logger.error(f"Error updating project: {str(e)}")
             raise
 
-    def update(self, request, *args, **kwargs):
-        """
-        Override the default update method to include permission checks and proper error handling.
-        """
+    def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """Override the default update method."""
         try:
             instance = self.get_object()
             logger.info(f"Updating project {instance.id} by {request.user.email}")
 
             if instance.user != request.user:
                 logger.warning(
-                    f"User {request.user.email} attempted to update project {instance.id} owned by {instance.user.email}"
+                    f"User {request.user.email} attempted to update project "
+                    f"{instance.id} owned by {instance.user.email}"
                 )
                 raise PermissionDenied(
                     _("You don't have permission to update this project")
@@ -162,7 +155,6 @@ class ProjectViewSet(viewsets.ModelViewSet):
         except PermissionDenied as e:
             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except ValidationError as e:
-            # **Change here:** Return e.detail directly without wrapping in 'error'
             logger.error(f"Validation error updating project: {str(e)}")
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:

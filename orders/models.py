@@ -5,6 +5,8 @@ from django.db import models
 
 
 class ProjectOrder(models.Model):
+    """Represents an order for a project package."""
+
     ORDER_STATUS_CHOICES = [
         ("inquiry", "Inquiry"),
         ("proposal", "Proposal Sent"),
@@ -41,20 +43,19 @@ class ProjectOrder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def save(self, *args, **kwargs):
-        if not self.pk:  # On creation, calculate deposit/remaining amounts
+    def save(self, *args, **kwargs) -> None:
+        """Calculate deposit and remaining amounts on creation."""
+        if not self.pk:
             self.deposit_amount = self.total_amount * Decimal("0.30")
             self.remaining_amount = self.total_amount - self.deposit_amount
         super().save(*args, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Order #{self.pk} - {self.package}"
 
 
 class OrderPayment(models.Model):
-    """
-    Represents a payment made for an order.
-    """
+    """Represents a payment made for an order."""
 
     PAYMENT_TYPES = [
         ("deposit", "Deposit"),
@@ -70,5 +71,5 @@ class OrderPayment(models.Model):
     status = models.CharField(max_length=20, default="pending")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Payment {self.amount} for Order #{self.order.pk}"

@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from .models import ProjectPlan, PlanningSession
+
 from projects.models import Project
+
+from .models import PlanningSession, ProjectPlan
 
 
 class PlanningSessionSerializer(serializers.ModelSerializer):

@@ -12,13 +12,19 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 class PaymentService:
+    """Service for handling payments."""
+
     @staticmethod
-    def calculate_milestone_payment(project, milestone):
-        remaining_milestones = project.milestone_set.filter(is_completed=False).count()
+    def calculate_milestone_payment(project: ProjectOrder, milestone) -> Decimal:
+        """Calculate payment for a project milestone."""
+        remaining_milestones = project.milestone_set.filter(
+            is_completed=False
+        ).count()
         return project.order.remaining_amount / (remaining_milestones + 1)
 
     @staticmethod
-    def process_refund(payment, reason):
+    def process_refund(payment: OrderPayment, reason: str):
+        """Process a refund for a payment."""
         try:
             refund = stripe.Refund.create(
                 payment_intent=payment.stripe_payment_id, reason=reason
@@ -32,7 +38,8 @@ class PaymentService:
             raise ValueError(f"Refund failed: {str(e)}")
 
     @staticmethod
-    def handle_failed_payment_retry(payment):
+    def handle_failed_payment_retry(payment: OrderPayment):
+        """Handle retry for a failed payment."""
         retry_count = payment.retries.count()
         if retry_count < 3:
             new_payment_intent = stripe.PaymentIntent.create(
@@ -56,9 +63,14 @@ class PaymentService:
 
 
 class CommissionService:
+    """Service for handling commissions."""
+
     @staticmethod
-    def calculate_commission(order):
-        base_commission = order.total_amount * (order.commission_rate / Decimal("100"))
+    def calculate_commission(order: ProjectOrder) -> Decimal:
+        """Calculate commission for an order."""
+        base_commission = order.total_amount * (
+            order.commission_rate / Decimal("100")
+        )
         if order.package.name == "enterprise":
             return base_commission * Decimal("1.2")  # 20% bonus
         elif order.package.name == "mid_tier":
@@ -66,8 +78,8 @@ class CommissionService:
         return base_commission
 
     @staticmethod
-    def process_commission_payout(order):
-        """Process commission payout and update tracking"""
+    def process_commission_payout(order: ProjectOrder) -> bool:
+        """Process commission payout and update tracking."""
         if order.commission_status != "pending":
             return False
 
@@ -91,11 +103,16 @@ class CommissionService:
 
 
 class NotificationService:
+    """Service for sending notifications."""
+
     @staticmethod
-    def send_payment_notification(payment, notification_type):
-        """Send payment notification"""
+    def send_payment_notification(payment: OrderPayment, notification_type: str):
+        """Send payment notification."""
         subject = f"Payment {payment.status} - {payment.get_payment_type_display()}"
-        message = f"Payment of {payment.amount} for order {payment.order.id} has been {payment.status}"
+        message = (
+            f"Payment of {payment.amount} for order {payment.order.id} "
+            f"has been {payment.status}"
+        )
 
         send_mail(
             subject=subject,
@@ -106,7 +123,7 @@ class NotificationService:
 
     @staticmethod
     def send_milestone_notification(milestone):
-        """Send milestone completion notification"""
+        """Send milestone completion notification."""
         context = {
             "milestone_title": milestone.title,
             "project_title": milestone.project.title,

@@ -9,7 +9,9 @@ from .models import ProjectMessage as Message
 
 
 class MessageConsumer(AsyncWebsocketConsumer):
-    async def connect(self):
+    """Handles WebSocket connections for chat messages."""
+
+    async def connect(self) -> None:
         """Establish connection for authenticated users."""
         if self.scope["user"].is_authenticated:
             self.conversation_id = self.scope["url_route"]["kwargs"]["conversation_id"]
@@ -19,11 +21,11 @@ class MessageConsumer(AsyncWebsocketConsumer):
         else:
             await self.close(code=401)
 
-    async def disconnect(self, close_code):
+    async def disconnect(self, close_code: int) -> None:
         """Leave the group when the connection is closed."""
         await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
 
-    async def receive(self, text_data):
+    async def receive(self, text_data: str) -> None:
         """Handle incoming messages and broadcast them."""
         text_data_json = json.loads(text_data)
         message = text_data_json.get("message", "")
@@ -53,7 +55,7 @@ class MessageConsumer(AsyncWebsocketConsumer):
             },
         )
 
-    async def chat_message(self, event):
+    async def chat_message(self, event: dict) -> None:
         """Send the message to WebSocket clients."""
         await self.send(
             text_data=json.dumps(
@@ -67,7 +69,7 @@ class MessageConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def save_message(self, user_id, content):
+    def save_message(self, user_id: int, content: str) -> Message:
         """Save the message to the database."""
         try:
             conversation = Conversation.objects.get(id=self.conversation_id)
@@ -79,13 +81,13 @@ class MessageConsumer(AsyncWebsocketConsumer):
             raise ValueError("Invalid conversation ID")
 
     @database_sync_to_async
-    def mark_as_read(self, message):
+    def mark_as_read(self, message: Message) -> None:
         """Mark the message as read by the sender."""
         message.read_by.add(message.sender)
         message.save()
 
     @database_sync_to_async
-    def update_message_count_in_redis(self):
+    def update_message_count_in_redis(self) -> None:
         """Update the message count in Redis for the conversation."""
         cache_key = f"conversation_{self.conversation_id}_message_count"
         message_count = Message.objects.filter(
