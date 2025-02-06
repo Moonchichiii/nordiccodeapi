@@ -101,7 +101,7 @@ class CustomUserDetailsSerializer(UserDetailsSerializer):
         fields = UserDetailsSerializer.Meta.fields + (
             "full_name", "phone_number", "street_address", "city",
             "state_or_region", "postal_code", "country", "vat_number",
-            "accepted_terms", "marketing_consent", "is_verified",
+            "accepted_terms", "marketing_consent", "is_verified", "is_staff", "is_superuser",
         )
         read_only_fields = ("email", "is_verified", "accepted_terms")
 

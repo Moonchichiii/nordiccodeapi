@@ -1,165 +1,155 @@
-import logging
-from typing import Any
-
-from django.core.exceptions import ObjectDoesNotExist
+# projects/views.py
+from django.db.models import Prefetch
 from django.db import transaction
-from django.db.models import Q
-from django.utils.translation import gettext_lazy as _
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
-from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Project, ProjectPackage
-from .serializers import ProjectPackageSerializer, ProjectSerializer
+from .models import ProjectPackage, Addon, Project, ProjectAddon
+from .serializers import (
+    ProjectPackageSerializer,
+    AddonSerializer,
+    ProjectCreateSerializer,
+    ProjectDetailSerializer
+)
+from planner.models import PlannerSubmission
 
-logger = logging.getLogger(__name__)
-
-
-class ProjectPackageViewSet(viewsets.ModelViewSet):
-    """Manage Project Packages."""
-
-    queryset = ProjectPackage.objects.all()
+class ProjectPackageViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ProjectPackage.objects.filter(is_active=True)
     serializer_class = ProjectPackageSerializer
     permission_classes = [IsAuthenticated]
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
-    def get_permissions(self) -> list:
-        """Assign permissions based on action."""
-        if self.action in ["create", "update", "partial_update", "destroy"]:
-            permission_classes = [IsAuthenticated, IsAdminUser]
-        else:
-            permission_classes = [IsAuthenticated]
-        return [permission() for permission in permission_classes]
-
-    def perform_create(self, serializer: ProjectPackageSerializer) -> None:
-        """Create a new project package."""
-        try:
-            with transaction.atomic():
-                project_package = serializer.save()
-                logger.info(
-                    f"Creating new project package by {self.request.user.email}"
-                )
-                logger.info(f"Successfully created package: {project_package.name}")
-        except ValidationError as e:
-            logger.error(f"Validation error creating package: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error creating package: {str(e)}")
-            raise
-
-    def perform_update(self, serializer: ProjectPackageSerializer) -> None:
-        """Update an existing project package."""
-        try:
-            with transaction.atomic():
-                project_package = serializer.save()
-                logger.info(
-                    f"Updating package {project_package.id} by {self.request.user.email}"
-                )
-                logger.info(f"Successfully updated package {project_package.id}")
-        except ObjectDoesNotExist:
-            logger.error(f"Package not found: {self.kwargs.get('pk')}")
-            raise ValidationError(_("Package not found"))
-        except Exception as e:
-            logger.error(f"Error updating package: {str(e)}")
-            raise
-
+    @action(detail=True, methods=['get'])
+    def compatible_addons(self, request, pk=None):
+        package = self.get_object()
+        addons = package.compatible_addons.filter(is_active=True)
+        serializer = AddonSerializer(addons, many=True)
+        return Response(serializer.data)
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    """Manage Projects."""
-
-    serializer_class = ProjectSerializer
     permission_classes = [IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser, JSONParser)
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
-    filterset_fields = {
-        "status": ["exact"],
-        "package__name": ["exact"],
-    }
-    search_fields = ["title", "description"]
-    ordering_fields = ["created_at", "title"]
 
-    def get_queryset(self) -> Any:
-        """Return projects for the current authenticated user."""
-        return Project.objects.select_related("user", "package").filter(
-            user=self.request.user
+    def get_queryset(self):
+        return Project.objects.filter(user=self.request.user).prefetch_related(
+            'package',
+            Prefetch(
+                'projectaddon_set',
+                queryset=ProjectAddon.objects.select_related('addon')
+            )
         )
 
-    def perform_create(self, serializer: ProjectSerializer) -> None:
-        """Create a new project."""
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ProjectCreateSerializer
+        return ProjectDetailSerializer
+
+    def perform_create(self, serializer):
+        project = serializer.save(user=self.request.user, status='draft')
+        project.status = 'planning'        
+        project.save()
+
+
+    @transaction.atomic
+    @action(detail=True, methods=['post'])
+    def approve_planning(self, request, pk=None):
+        project = self.get_object()
+        if project.status != 'planning':
+            return Response({'error': 'Project must be in planning phase.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project.approve_planning()
+        serializer = self.get_serializer(project)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def lock_planning(self, request, pk=None):
+        project = self.get_object()
+        if project.status != 'planning':
+            return Response({'error': 'Project must be in planning phase.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project.is_planning_locked = True
+        project.save()
+        serializer = self.get_serializer(project)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def complete_planning(self, request, pk=None):
+        project = self.get_object()
+        if project.is_planning_locked:
+            return Response({'error': 'Planning is locked. Cannot complete.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project.is_planning_completed = True
+        project.status = 'pending_approval'
+        project.save()
+        serializer = self.get_serializer(project)
+        return Response(serializer.data)
+
+    @transaction.atomic
+    @action(detail=True, methods=['post'], url_path='addons')
+    def save_addons(self, request, pk=None):
+        project = self.get_object()
+        addons_list = request.data.get('addons', [])
+        package_id = request.data.get('package_id')
+        if package_id:
+            try:
+                package_obj = ProjectPackage.objects.get(type=package_id)
+                project.package = package_obj
+            except ProjectPackage.DoesNotExist:
+                return Response({'error': f"Invalid package_id: {package_id}"},
+                                status=status.HTTP_400_BAD_REQUEST)
+        ProjectAddon.objects.filter(project=project).delete()
+        package_type = project.package.type
+        for addon_pk in addons_list:
+            try:
+                addon_obj = Addon.objects.get(pk=addon_pk, is_active=True)
+                included = package_type == 'enterprise' and addon_obj.compatible_packages.filter(type='enterprise').exists()
+                ProjectAddon.objects.create(project=project, addon=addon_obj, is_included=included)
+            except Addon.DoesNotExist:
+                continue
+        project.recalc_and_save()
+        return Response({'detail': 'Add-ons updated successfully!', 'project_id': project.id},
+                        status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def summary(self, request, pk=None):
+        project = self.get_object()
         try:
-            with transaction.atomic():
-                project = serializer.save(user=self.request.user)
-                logger.info(
-                    f"Project '{project.title}' created by {self.request.user.email}"
-                )
-        except ValidationError as e:
-            logger.error(f"Validation error creating project: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error creating project: {str(e)}")
-            raise
+            submission = project.planner_submission
+        except PlannerSubmission.DoesNotExist:
+            return Response({"error": "No planner submission found."}, status=400)
+        summary_data = {
+            "package": {
+                "id": project.package.type,
+                "title": project.package.name,
+                "price_eur": project.package.price_eur,
+                "features": project.package.features,
+            },
+            "addons": [
+                {
+                    "id": pa.addon.id,
+                    "title": pa.addon.name,
+                    "price_eur": pa.addon.price_eur,
+                } for pa in project.projectaddon_set.all()
+            ],
+            "planner": {
+                "client_summary": submission.client_summary,
+                "developer_worksheet": submission.developer_worksheet,
+            },
+            "total_price_eur": project.total_price_eur,
+        }
+        return Response(summary_data)
 
-    def perform_update(self, serializer: ProjectSerializer) -> None:
-        """Update an existing project."""
+    @transaction.atomic
+    @action(detail=True, methods=['post'])
+    def confirm_summary(self, request, pk=None):
+        project = self.get_object()
         try:
-            with transaction.atomic():
-                instance = serializer.instance
-                new_status = serializer.validated_data.get("status")
-
-                if new_status == Project.StatusChoices.COMPLETED:
-                    if not instance.assigned_staff.exists():
-                        raise ValidationError(
-                            {
-                                "status": "Cannot mark as completed without assigned staff"
-                            }
-                        )
-
-                project = serializer.save()
-                logger.info(f"Project {project.id} updated - Status: {project.status}")
-        except ValidationError as e:
-            logger.error(f"Validation error updating project: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"Error updating project: {str(e)}")
-            raise
-
-    def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
-        """Override the default update method."""
-        try:
-            instance = self.get_object()
-            logger.info(f"Updating project {instance.id} by {request.user.email}")
-
-            if instance.user != request.user:
-                logger.warning(
-                    f"User {request.user.email} attempted to update project "
-                    f"{instance.id} owned by {instance.user.email}"
-                )
-                raise PermissionDenied(
-                    _("You don't have permission to update this project")
-                )
-
-            return super().update(request, *args, **kwargs)
-
-        except ObjectDoesNotExist:
-            logger.error(f"Project not found: {kwargs.get('pk')}")
-            return Response(
-                {"error": _("Project not found")}, status=status.HTTP_404_NOT_FOUND
-            )
-        except PermissionDenied as e:
-            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
-        except ValidationError as e:
-            logger.error(f"Validation error updating project: {str(e)}")
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.error(f"Error updating project: {str(e)}")
-            return Response(
-                {"error": _("Failed to update project")},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            submission = project.planner_submission
+        except PlannerSubmission.DoesNotExist:
+            return Response({"error": "No planner submission found."}, status=400)
+        if not submission.client_summary or not submission.developer_worksheet:
+            return Response({"error": "Summary data is incomplete."}, status=400)
+        project.status = 'pending_payment'
+        project.save()
+        return Response({"detail": "Project summary confirmed and status updated to pending_payment."},
+                        status=status.HTTP_200_OK)

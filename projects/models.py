@@ -1,245 +1,165 @@
-import logging
-from decimal import Decimal
-
-from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator, MinValueValidator
+# projects/models.py
 from django.db import models
-from django.utils.translation import gettext_lazy as _
-
-logger = logging.getLogger(__name__)
-
-
-class ProjectPackageManager(models.Manager):
-    """Manager for ProjectPackage model."""
-
-    def get_active_packages(self):
-        """Get all currently available packages."""
-        return self.all()
-
-    def get_package_by_name(self, name: str):
-        """Get package by name safely."""
-        try:
-            return self.get(name=name)
-        except ProjectPackage.DoesNotExist:
-            logger.error(f"Package not found: {name}")
-            return None
-
+from django.conf import settings
 
 class ProjectPackage(models.Model):
-    """Model representing different project package offerings."""
-
-    class PackageChoices(models.TextChoices):
-        ENTERPRISE = "enterprise", _("Enterprise Full-Stack Solution")
-        MID_TIER = "mid_tier", _("Mid-Tier Solution")
-        STATIC = "static", _("Static Frontend Solution")
-
-    name = models.CharField(
-        max_length=50,
-        choices=PackageChoices.choices,
-        unique=True,
-        help_text=_("Type of project package"),
+    """Represents a project package."""
+    PACKAGE_TYPES = [
+        ('static', 'Static Frontend'),
+        ('fullstack', 'Full Stack'),
+        ('enterprise', 'Enterprise'),
+    ]
+    type = models.CharField(max_length=20, choices=PACKAGE_TYPES, unique=True)
+    name = models.CharField(max_length=100)
+    price_eur_cents = models.PositiveIntegerField(
+        help_text='Price in EUR cents (e.g., 60000 for €600.00)'
     )
-    base_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.01"))],
-        help_text=_("Base price for the package"),
+    price_sek_ore = models.PositiveIntegerField(
+        help_text='Price in SEK öre (e.g., 630000 for 6300.00 SEK)'
     )
-    features = models.JSONField(
-        help_text=_("Package features in JSON format"),
-        default=dict,
-    )
-    tech_stack = models.JSONField(
-        default=list,
-        help_text=_("Technologies used in this package"),
-    )
-    deliverables = models.JSONField(
-        default=list,
-        help_text=_("Project deliverables"),
-    )
-    estimated_duration = models.PositiveIntegerField(
-        help_text=_("Estimated duration in days"),
-        validators=[MinValueValidator(1)],
-    )
-    maintenance_period = models.PositiveIntegerField(
-        default=30,
-        help_text=_("Support period in days"),
-        validators=[MinValueValidator(1)],
-    )
-    sla_response_time = models.PositiveIntegerField(
-        default=24,
-        help_text=_("Response time in hours"),
-        validators=[MinValueValidator(1)],
-    )
-
-    objects = ProjectPackageManager()
+    description = models.TextField(blank=True)
+    features = models.JSONField()
+    extra_features = models.JSONField()
+    is_active = models.BooleanField(default=True)
+    is_recommended = models.BooleanField(default=False)
+    support_days = models.PositiveIntegerField(default=30)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = _("Project Package")
-        verbose_name_plural = _("Project Packages")
-        ordering = ["base_price"]
+        ordering = ['price_eur_cents']
 
     def __str__(self):
-        return self.get_name_display()
-
-    def clean(self):
-        """Validate the model."""
-        super().clean()
-        if self.maintenance_period < 1:
-            raise ValidationError(
-                {"maintenance_period": _("Maintenance period must be at least 1 day")}
-            )
-        if self.sla_response_time < 1:
-            raise ValidationError(
-                {"sla_response_time": _("SLA response time must be at least 1 hour")}
-            )
-
-    def get_features_list(self) -> list:
-        """Return features as a list."""
-        return list(self.features.values()) if isinstance(self.features, dict) else []
+        return f"{self.name} ({self.get_type_display()})"
 
     @property
-    def total_price(self) -> Decimal:
-        """Calculate total price including all features."""
-        return self.base_price
+    def price_eur(self) -> float:
+        return self.price_eur_cents / 100
+
+    @property
+    def price_sek(self) -> float:
+        return self.price_sek_ore / 100
 
 
-class ProjectQuerySet(models.QuerySet):
-    """Custom QuerySet for Project model."""
+class Addon(models.Model):
+    id = models.CharField(primary_key=True, max_length=100)  # Use string as primary key
+    name = models.CharField(max_length=100)
+    description = models.TextField()
+    price_eur_cents = models.PositiveIntegerField(
+        help_text='Price in EUR cents (e.g., 10000 for €100.00)'
+    )
+    price_sek_ore = models.PositiveIntegerField(
+        help_text='Price in SEK öre (e.g., 100000 for 1000.00 SEK)'
+    )
+    compatible_packages = models.ManyToManyField(
+        ProjectPackage,
+        related_name='compatible_addons'
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def price_eur(self) -> float:
+        return self.price_eur_cents / 100
+    
+    @property
+    def price_sek(self) -> float:
+        return self.price_sek_ore / 100
 
-    def active(self):
-        """Get all non-completed projects."""
-        return self.exclude(status=Project.StatusChoices.COMPLETED)
-
-    def by_status(self, status: str):
-        """Filter projects by status."""
-        return self.filter(status=status)
-
-    def with_staff(self):
-        """Get projects with assigned staff."""
-        return self.exclude(assigned_staff__isnull=True)
-
-
-class ProjectManager(models.Manager):
-    """Manager for Project model."""
-
-    def get_queryset(self):
-        return ProjectQuerySet(self.model, using=self._db)
-
-    def active(self):
-        return self.get_queryset().active()
 
 
 class Project(models.Model):
-    """Model representing client projects with their details and status."""
-
-    class StatusChoices(models.TextChoices):
-        PLANNING = "planning", _("Planning Phase")
-        PENDING_PAYMENT = "pending_payment", _("Pending Payment")
-        IN_PROGRESS = "in_progress", _("In Progress")
-        COMPLETED = "completed", _("Completed")
-
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('planning', 'Planning Phase'),
+        ('pending_approval', 'Pending Client Approval'),
+        ('pending_payment', 'Pending Payment'),
+        ('development', 'In Development'),
+        ('review', 'Review Phase'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="projects",
-        help_text=_("Project owner"),
-    )
-    title = models.CharField(
-        max_length=200,
-        help_text=_("Project title"),
-    )
-    description = models.TextField(
-        help_text=_("Detailed project description"),
+        related_name='projects'
     )
     package = models.ForeignKey(
         ProjectPackage,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
+        related_name='projects'
+    )
+    addons = models.ManyToManyField(
+        Addon,
+        through='ProjectAddon',
+        related_name='projects'
+    )
+    title = models.CharField(max_length=200, blank=True)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    requirements_doc = models.FileField(
+        upload_to='project_requirements/%Y/%m/',
         null=True,
-        blank=True,
-        related_name="projects",
-        help_text=_("Selected project package"),
+        blank=True
     )
-    client_specifications = models.FileField(
-        upload_to="client_specs/%Y/%m/",
-        validators=[
-            FileExtensionValidator(allowed_extensions=["pdf", "doc", "docx"])
-        ],
-        null=True,
-        blank=True,
-        help_text=_("Client-provided documents (PDF, DOC, DOCX)"),
+    start_date = models.DateField(null=True, blank=True)
+    target_completion_date = models.DateField(null=True, blank=True)
+    is_planning_completed = models.BooleanField(default=False)
+    is_planning_locked = models.BooleanField(default=True)
+    total_price_eur_cents = models.PositiveIntegerField(
+        help_text='Total price in EUR cents'
     )
-    status = models.CharField(
-        max_length=20,
-        choices=StatusChoices.choices,
-        default=StatusChoices.PLANNING,
-        help_text=_("Current project status"),
-    )
-    planning_completed = models.BooleanField(default=False)
-    planning_locked = models.BooleanField(default=True)
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text=_("Project creation timestamp"),
-    )
-    assigned_staff = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        related_name="assigned_projects",
-        blank=True,
-        help_text=_("Staff members assigned to this project"),
-    )
-
-    objects = ProjectManager()
+    estimated_hours = models.PositiveIntegerField(null=True, blank=True)
+    client_approved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
-        verbose_name = _("Project")
-        verbose_name_plural = _("Projects")
-        indexes = [
-            models.Index(fields=["status", "created_at"]),
-            models.Index(fields=["user", "created_at"]),
-        ]
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.title} ({self.get_status_display()})"
-
-    def clean(self):
-        """Validate the model."""
-        super().clean()
-        if self.status == self.StatusChoices.COMPLETED:
-            if self.pk and not self.assigned_staff.exists():
-                raise ValidationError(
-                    {"status": _("Cannot mark as completed without assigned staff")}
-                )
-
-    def save(self, *args, **kwargs):
-        """Override save to ensure validation."""
-        self.full_clean()
-        super().save(*args, **kwargs)
-        logger.info(f"Project {self.id} saved - Status: {self.status}")
+        return f"{self.title} - {self.user.email}"
 
     @property
-    def is_active(self) -> bool:
-        """Check if project is active."""
-        return self.status != self.StatusChoices.COMPLETED
+    def total_price_eur(self) -> float:
+        return self.total_price_eur_cents / 100
 
-    @property
-    def has_specifications(self) -> bool:
-        """Check if project has client specifications."""
-        return bool(self.client_specifications)
+    def calculate_total_price_cents(self) -> int:
+        total = self.package.price_eur_cents
+        for project_addon in self.projectaddon_set.filter(is_included=False):
+            total += project_addon.addon.price_eur_cents
+        return total
 
-    def assign_staff(self, user):
-        """Safely assign staff to project."""
-        if user.is_staff:
-            self.assigned_staff.add(user)
-            logger.info(f"Staff member {user.email} assigned to project {self.id}")
-        else:
-            logger.warning(
-                f"Attempted to assign non-staff user {user.email} to project {self.id}"
-            )
-            raise ValidationError(_("Only staff members can be assigned to projects"))
+    def recalc_and_save(self) -> None:
+        self.total_price_eur_cents = self.calculate_total_price_cents()
+        self.save()
 
-    def remove_staff(self, user):
-        """Safely remove staff from project."""
-        self.assigned_staff.remove(user)
-        logger.info(f"Staff member {user.email} removed from project {self.id}")
+    def approve_planning(self):
+        if self.status == 'planning' and not self.is_planning_locked:
+            self.client_approved = True
+            self.status = 'pending_payment'
+            self.save()
+
+
+class ProjectAddon(models.Model):
+    """Through model for project and add-on relationships."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE)
+    addon = models.ForeignKey(Addon, on_delete=models.PROTECT)
+    is_included = models.BooleanField(default=False)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['project', 'addon']
+
+    def __str__(self):
+        return f"{self.project.title} - {self.addon.name}"
+
+    def is_included_by_default(self) -> bool:
+        return (
+            self.project.package.type == 'enterprise'
+            and self.addon.compatible_packages.filter(type='enterprise').exists()
+        )

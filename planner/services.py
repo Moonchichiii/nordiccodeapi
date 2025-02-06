@@ -1,204 +1,67 @@
-# planner/services.py
-import json
-import logging
+import os
+import openai
 
-from django.conf import settings
-from openai import OpenAI
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
-logger = logging.getLogger(__name__)
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-class AIPlanner:
+def generate_summaries(submission_data: dict) -> dict:
     """
-    Comprehensive service for AI-powered project planning and analysis
+    Given the submission data, generate:
+      - client_summary: a client-friendly summary
+      - developer_worksheet: a detailed technical specification and visual mockup description for developers.
     """
+    # Build a detailed, structured prompt
+    prompt = f"""
+    You are an expert in web application planning and UI design.
+
+    The following is a set of project requirements:
+    -----------------------------------
+    Project Overview:
+    {submission_data.get("projectOverview")}
     
-    @staticmethod
-    async def analyze_requirements(project_type: str, requirements: dict):
-        """Analyze project requirements using GPT-4"""
-        try:
-            response = await client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an expert web development project planner with deep knowledge of:
-                            - Modern web architectures
-                            - Development best practices
-                            - Project estimation
-                            - Technical risk assessment
-                            """
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-                        Project Type: {project_type}
-                        Requirements: {json.dumps(requirements, indent=2)}
-                        
-                        Please provide a comprehensive analysis including:
-                        1. Technical Stack Recommendations:
-                           - Frontend framework and libraries
-                           - Backend technologies
-                           - Database solutions
-                           - DevOps and deployment
-                        
-                        2. Potential Challenges and Solutions:
-                           - Technical risks
-                           - Scalability considerations
-                           - Security concerns
-                           - Performance optimization
-                        
-                        3. Development Timeline:
-                           - Major milestones
-                           - Phase breakdown
-                           - Time estimates per phase
-                        
-                        4. Resource Requirements:
-                           - Team composition
-                           - Skill requirements
-                           - Infrastructure needs
-                        
-                        Format your response in a clear, structured JSON-like format.
-                        """
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-            
-            return {
-                "analysis": response.choices[0].message.content,
-                "confidence_score": response.choices[0].finish_reason == "stop" and 1.0 or 0.8
-            }
-        except Exception as e:
-            logger.error(f"AI Analysis Error: {str(e)}")
-            raise
+    Business Goals:
+    {submission_data.get("businessGoals")}
+    
+    Functional Requirements:
+    {submission_data.get("functionalRequirements")}
+    
+    Design Preferences:
+    {submission_data.get("designPreferences")}
+    
+    Technical Context:
+    {submission_data.get("technicalContext")}
+    
+    Website Content:
+    {submission_data.get("websiteContent")}
+    -----------------------------------
 
-    @staticmethod
-    async def get_design_recommendations(requirements: dict, preferences: dict):
-        """Get AI-powered design recommendations"""
-        try:
-            response = await client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an expert web designer specializing in:
-                            - Modern UI/UX principles
-                            - Brand identity
-                            - Responsive design
-                            - Accessibility
-                            """
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-                        Based on:
-                        Requirements: {json.dumps(requirements, indent=2)}
-                        User Preferences: {json.dumps(preferences, indent=2)}
-                        
-                        Please provide comprehensive design recommendations including:
-                        1. Color Scheme:
-                           - Primary and secondary colors (with hex codes)
-                           - Accent colors
-                           - Dark/light mode variations
-                        
-                        2. Typography:
-                           - Font pairings
-                           - Heading hierarchy
-                           - Text sizes and weights
-                        
-                        3. Layout Structure:
-                           - Component hierarchy
-                           - Grid system
-                           - Spacing guidelines
-                        
-                        4. UI Elements:
-                           - Button styles
-                           - Form elements
-                           - Navigation patterns
-                           - Card designs
-                        
-                        5. Responsive Design:
-                           - Breakpoints
-                           - Mobile-first considerations
-                           - Touch targets
-                        
-                        Format your response in a clear, structured JSON-like format.
-                        """
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-            
-            return {
-                "recommendations": response.choices[0].message.content,
-                "confidence_score": response.choices[0].finish_reason == "stop" and 1.0 or 0.8
-            }
-        except Exception as e:
-            logger.error(f"Design Recommendations Error: {str(e)}")
-            raise
+    Your tasks:
+    1. Generate a concise, friendly summary for the client that highlights the key business goals and overall vision.
+    2. Generate a detailed developer worksheet that includes technical specifications, architectural guidelines, and a description for a visual mockup of the website design.
+    3. Output the response as valid JSON with two keys: "client_summary" and "developer_worksheet".
 
-    @staticmethod
-    async def get_tech_stack_recommendations(project_type: str, requirements: dict):
-        """Get detailed technology stack recommendations"""
-        try:
-            response = await client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an expert in modern web development stacks with deep knowledge of:
-                            - Frontend frameworks and libraries
-                            - Backend technologies
-                            - Database systems
-                            - DevOps and deployment
-                            - Security best practices
-                            """
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-                        Project Type: {project_type}
-                        Requirements: {json.dumps(requirements, indent=2)}
-                        
-                        Please provide detailed tech stack recommendations including:
-                        1. Frontend:
-                           - Framework choice with rationale
-                           - Key libraries and tools
-                           - State management
-                           - Build system
-                        
-                        2. Backend:
-                           - Framework selection
-                           - API architecture
-                           - Authentication system
-                           - Performance considerations
-                        
-                        3. Database:
-                           - Database type and specific solution
-                           - Data modeling approach
-                           - Scaling strategy
-                        
-                        4. DevOps:
-                           - Deployment strategy
-                           - CI/CD pipeline
-                           - Monitoring and logging
-                           - Security measures
-                        
-                        Format your response in a clear, structured JSON-like format.
-                        """
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-            
-            return {
-                "recommendations": response.choices[0].message.content,
-                "confidence_score": response.choices[0].finish_reason == "stop" and 1.0 or 0.8
-            }
-        except Exception as e:
-            logger.error(f"Tech Stack Recommendation Error: {str(e)}")
-            raise
+    The output must follow this JSON schema exactly:
+    {{
+      "client_summary": "<string>",
+      "developer_worksheet": "<string>"
+    }}
+    """
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {"role": "system", "content": "You are a helpful planning assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        output_text = response.choices[0].message.content.strip()
+        # Here you can optionally add JSON parsing with error handling
+        import json
+        result = json.loads(output_text)
+        return result
+    except Exception as e:
+        # Log error details in production
+        raise e
+

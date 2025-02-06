@@ -25,8 +25,8 @@ class TokenService:
             'token_type': token_type,
             'jti': token_id or str(uuid.uuid4()),
             'iat': timezone.now().timestamp(),
-            'user_id': str(user.id),
-            'email': user.email,
+            'user_id': user.id,  # Changed from str(user.id) to just user.id
+            'email': user.email,  # Keep email in payload
             'is_verified': user.is_verified,
         }
 
@@ -35,7 +35,11 @@ class TokenService:
         """Generate refresh and access tokens for a user."""
         refresh = RefreshToken.for_user(user)
         token_id = str(uuid.uuid4())
+
+        # Add custom claims to refresh token
         refresh.payload.update(cls._create_token_payload(user, 'refresh', token_id))
+        
+        # Add custom claims to access token
         access = refresh.access_token
         access.payload.update(cls._create_token_payload(user, 'access'))
 
@@ -47,8 +51,15 @@ class TokenService:
     @staticmethod
     def revoke_user_tokens(user) -> None:
         """Revoke all tokens for a user."""
-        RefreshToken.objects.filter(user=user).delete()
-
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+            # Blacklist all outstanding tokens for the user
+            tokens = OutstandingToken.objects.filter(user_id=user.id)
+            for token in tokens:
+                BlacklistedToken.objects.get_or_create(token=token)
+        except Exception as e:
+            logger.error(f"Error revoking tokens for user {user.id}: {str(e)}")
+            raise
 
 class SecurityService:
     """Service for handling security-related tasks."""

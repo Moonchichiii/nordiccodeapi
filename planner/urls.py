@@ -1,12 +1,6 @@
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
-
-from .views import PlanningSessionViewSet, ProjectPlanViewSet
-
-router = DefaultRouter()
-router.register(r'plans', ProjectPlanViewSet, basename='plan')
-router.register(r'sessions', PlanningSessionViewSet, basename='session')
+from django.urls import path
+from .views import PlannerSubmissionAPIView
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('submissions/', PlannerSubmissionAPIView.as_view(), name='planner-submission'),
 ]

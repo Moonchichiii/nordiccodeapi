@@ -1,203 +1,145 @@
-import json
-import logging
-
-from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator
-from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
-
-from .models import Project, ProjectPackage
-
-User = get_user_model()
-logger = logging.getLogger(__name__)
-
+from .models import ProjectPackage, Addon, Project, ProjectAddon
 
 class ProjectPackageSerializer(serializers.ModelSerializer):
-    """Serializer for project packages with custom validation."""
-
-    features = serializers.JSONField(required=True)
-    tech_stack = serializers.ListField(
-        child=serializers.CharField(), required=True
-    )
-    deliverables = serializers.ListField(
-        child=serializers.CharField(), required=True
-    )
+    """
+    Serializer for the ProjectPackage model.
+    Exposes read-only properties for price_eur and price_sek.
+    """
+    price_eur = serializers.FloatField(read_only=True)
+    price_sek = serializers.FloatField(read_only=True)
 
     class Meta:
         model = ProjectPackage
         fields = [
-            "id",
-            "name",
-            "base_price",
-            "features",
-            "tech_stack",
-            "deliverables",
-            "estimated_duration",
-            "maintenance_period",
-            "sla_response_time",
+            'id', 'type', 'name', 'price_eur', 'price_sek',
+            'description', 'features', 'extra_features',
+            'is_recommended', 'support_days'
         ]
-        read_only_fields = ["id"]
 
-    def validate_features(self, value: str) -> dict:
-        """Validate features JSON data."""
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON in features: {str(e)}")
-                raise serializers.ValidationError(
-                    _("Invalid JSON format for features")
-                )
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                _("Features must be a dictionary")
-            )
-        return value
-
-    def validate_tech_stack(self, value: str) -> list:
-        """Validate tech stack data."""
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON in tech_stack: {str(e)}")
-                raise serializers.ValidationError(
-                    _("Invalid JSON format for tech stack")
-                )
-        if not isinstance(value, list):
-            raise serializers.ValidationError(
-                _("Tech stack must be a list")
-            )
-        return value
-
-    def validate_base_price(self, value: float) -> float:
-        """Validate base price."""
-        if value <= 0:
-            raise serializers.ValidationError(
-                _("Base price must be greater than zero")
-            )
-        return value
-
-    def validate(self, data: dict) -> dict:
-        """Validate the entire package data."""
-        if data["maintenance_period"] < 1:
-            raise serializers.ValidationError(
-                {"maintenance_period": _("Maintenance period cannot be negative")}
-            )
-        if data["sla_response_time"] < 1:
-            raise serializers.ValidationError(
-                {"sla_response_time": _("SLA response time must be at least 1 hour")}
-            )
-        return data
-
-
-class ProjectSerializer(serializers.ModelSerializer):
-    """Serializer for projects with enhanced validation."""
-
-    package_name = serializers.CharField(
-        source="package.get_name_display", read_only=True
-    )
-    user = serializers.StringRelatedField(read_only=True)
-    assigned_staff = serializers.PrimaryKeyRelatedField(
+class AddonSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Addon model.
+    Returns the compatible packages as primary keys.
+    """
+    price_eur = serializers.FloatField(read_only=True)
+    price_sek = serializers.FloatField(read_only=True)
+    compatible_packages = serializers.PrimaryKeyRelatedField(
         many=True,
-        queryset=User.objects.filter(is_staff=True),
-        required=False,
+        read_only=True
     )
-    client_specifications = serializers.FileField(
-        validators=[FileExtensionValidator(allowed_extensions=["pdf", "doc", "docx"])],
+
+    class Meta:
+        model = Addon
+        fields = [
+            'id', 'name', 'description',
+            'price_eur', 'price_sek', 'compatible_packages'
+        ]
+
+class ProjectAddonSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ProjectAddon (through) model.
+    Uses the AddonSerializer to display addon details.
+    """
+    addon = AddonSerializer(read_only=True)
+
+    class Meta:
+        model = ProjectAddon
+        fields = ['addon', 'is_included']
+
+class ProjectCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer used when creating a new Project.
+    Expects a package_id as a string (the package type, e.g. "enterprise")
+    and a list of addon_ids.
+    The total price is computed in cents.
+    """
+    package_id = serializers.CharField(write_only=True, required=True)
+    addon_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
         required=False,
+        default=list
     )
 
     class Meta:
         model = Project
         fields = [
-            "id",
-            "user",
-            "title",
-            "description",
-            "package",
-            "package_name",
-            "client_specifications",
-            "status",
-            "assigned_staff",
-            "created_at",
+            'id',
+            'title',
+            'description',
+            'requirements_doc',
+            'package_id',
+            'addon_ids',
         ]
-        read_only_fields = ["id", "user", "created_at"]
+        read_only_fields = ['id']
 
-    def validate_title(self, value: str) -> str:
-        """Validate project title."""
-        if len(value.strip()) < 3:
-            raise serializers.ValidationError(
-                _("Title must be at least 3 characters long")
-            )
-        return value.strip()
-
-    def validate_description(self, value: str) -> str:
-        """Validate project description."""
-        if len(value.strip()) < 10:
-            raise serializers.ValidationError(
-                _("Description must be at least 10 characters long")
-            )
-        return value.strip()
-
-    def validate_status(self, value: str) -> str:
-        """Validate project status."""
+    def validate_package_id(self, package_id):
         try:
-            if value not in dict(Project.StatusChoices.choices):
-                raise serializers.ValidationError(
-                    _("Invalid status choice. Allowed values are: {}").format(
-                        ", ".join(dict(Project.StatusChoices.choices).keys())
-                    )
+            package = ProjectPackage.objects.get(type=package_id)
+            return package
+        except ProjectPackage.DoesNotExist:
+            raise serializers.ValidationError(f"Invalid package_id: {package_id}")
+
+    def create(self, validated_data):
+        addon_ids = validated_data.pop('addon_ids', [])
+        # The validated package_id field now contains the Package instance
+        package = validated_data.pop('package_id')
+
+        # Initialize total price in cents using the package price
+        total_price_eur_cents = package.price_eur_cents
+
+        # Create the project; note that we save the total in cents
+        project = Project.objects.create(
+            **validated_data,
+            package=package,
+            total_price_eur_cents=total_price_eur_cents
+        )
+
+        # Process each addon, add its price if not included by default
+        for addon_id in addon_ids:
+            try:
+                addon = Addon.objects.get(pk=addon_id, is_active=True)
+                # Determine if the addon is included by default (for enterprise packages)
+                included = (
+                    project.package.type == 'enterprise' and
+                    addon.compatible_packages.filter(type='enterprise').exists()
                 )
-        except Exception as e:
-            logger.error(f"Status validation error: {str(e)}")
-            raise serializers.ValidationError(_("Invalid status value"))
-        return value
+                ProjectAddon.objects.create(
+                    project=project,
+                    addon=addon,
+                    is_included=included
+                )
+                # If the addon is not included, add its price (in cents) to the total
+                if not included:
+                    total_price_eur_cents += addon.price_eur_cents
+            except Addon.DoesNotExist:
+                continue
 
-    def validate_package(self, value: ProjectPackage) -> ProjectPackage:
-        """Validate project package."""
-        if self.context["request"].method == "POST" and not value:
-            raise serializers.ValidationError(_("Package is required for new projects"))
-        return value
+        # Update the project's total price if any addon prices were added
+        if total_price_eur_cents != project.total_price_eur_cents:
+            project.total_price_eur_cents = total_price_eur_cents
+            project.save()
 
-    def validate_assigned_staff(self, value: list) -> list:
-        """Validate assigned staff members."""
-        if value and not all(user.is_staff for user in value):
-            raise serializers.ValidationError(
-                _("Only staff members can be assigned to projects")
-            )
-        return value
+        return project
 
-    def validate(self, data: dict) -> dict:
-        """Validate the entire project data."""
-        try:
-            if self.instance and "status" in data:
-                if (
-                    self.instance.status == Project.StatusChoices.COMPLETED
-                    and data["status"] != Project.StatusChoices.COMPLETED
-                ):
-                    raise serializers.ValidationError(
-                        {"status": _("Cannot change status of completed project")}
-                    )
-            if (
-                "package" in data
-                and "assigned_staff" in data
-                and not data["assigned_staff"]
-            ):
-                logger.warning("Project created without assigned staff")
-            return data
-        except Exception as e:
-            logger.error(f"Project validation error: {str(e)}")
-            raise serializers.ValidationError(_("Invalid project data"))
+class ProjectDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for displaying detailed Project data.
+    Includes nested package and addon information.
+    """
+    package = ProjectPackageSerializer(read_only=True)
+    addons = ProjectAddonSerializer(source='projectaddon_set', many=True, read_only=True)
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    total_price_eur = serializers.FloatField(read_only=True)
 
-    def to_representation(self, instance: Project) -> dict:
-        """Custom representation of project data."""
-        data = super().to_representation(instance)
-        if isinstance(instance, Project):
-            data["is_completed"] = instance.status == Project.StatusChoices.COMPLETED
-        else:
-            data["is_completed"] = (
-                instance.get("status") == Project.StatusChoices.COMPLETED
-            )
-        return data
+    class Meta:
+        model = Project
+        fields = [
+            'id', 'user_email', 'package', 'addons',
+            'title', 'description', 'status', 'requirements_doc',
+            'start_date', 'target_completion_date',
+            'is_planning_completed', 'is_planning_locked',
+            'total_price_eur', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['user_email', 'total_price_eur', 'created_at', 'updated_at']

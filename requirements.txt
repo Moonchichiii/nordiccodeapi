@@ -30,3 +30,6 @@ google-auth-httplib2
 google-api-python-client
 aiohttp  
 tenacity
+django-unfold 
+django-tinymce
+pillow

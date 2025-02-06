@@ -169,8 +169,8 @@ class AccountDeletionView(APIView):
 
 
 class LoginView(APIView):
+    
     """User login."""
-
     def post(self, request):
         serializer = CustomLoginSerializer(data=request.data,
                                            context={'request': request})

@@ -1,3 +1,7 @@
 from django.contrib import admin
+from ..builder.models import PlannerSubmission
 
-# Register your models here.
+@admin.register(PlannerSubmission)
+class PlannerSubmissionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'created_at')
+    readonly_fields = ('client_summary', 'developer_worksheet', 'created_at')

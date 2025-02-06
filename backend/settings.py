@@ -51,6 +51,9 @@ SESSION_COOKIE_SAMESITE = "Lax"
 
 DJANGO_APPS = [
     "daphne",
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',    
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -84,10 +87,13 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "users",
     "projects",
+    "billing",
     "planner",
     "chat",
-    "chatbot",
-    "orders",
+    
+    "chatbot",    
+    
+
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -130,6 +136,58 @@ TEMPLATES = [
     },
 ]
 
+UNFOLD = {
+    "SITE_TITLE": "Nordic Code Works",
+    "SITE_HEADER": "Site Management",
+    "SITE_URL": "/",
+    "SITE_ICON": None,
+    "COLORS": {
+        "primary": {
+            "50": "#F6F8FF",
+            "100": "#EDF0FF",
+            "200": "#D6DEFF",
+            "300": "#B8C7FF",
+            "400": "#8BA3FF",
+            "500": "#6687FF",
+            "600": "#3366FF",
+            "700": "#254EDB",
+            "800": "#1A3BB7",
+            "900": "#102A93",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "items": [
+            {
+                "title": "Projects",
+                "icon": "work",
+                "items": [
+                    {"title": "Projects", "url": "admin:projects_project_changelist"},
+                    {"title": "Packages", "url": "admin:projects_projectpackage_changelist"},
+                ]
+            },
+            {
+                "title": "Clients",
+                "icon": "people",
+                "items": [
+                    {"title": "Users", "url": "admin:users_customuser_changelist"}
+                ]
+            },
+            {
+                "title": "Billing",
+                "icon": "payments",
+                "items": [
+                    {"title": "Payments", "url": "admin:billing_payment_changelist"},
+                    {"title": "Plans", "url": "admin:billing_paymentplan_changelist"}
+                ]
+            }
+        ]
+    }
+}
+
+
+
 # =============================================================================
 # AUTHENTICATION CONFIGURATION
 # =============================================================================
@@ -167,14 +225,26 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
-    "USER_ID_FIELD": "email",
-    "USER_ID_CLAIM": "email",
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "TOKEN_TYPE_CLAIM": "token_type",
+    "JTI_CLAIM": "jti",
+    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
     "AUTH_COOKIE": "access_token",
     "AUTH_COOKIE_REFRESH": "refresh_token",
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_PATH": "/",
     "AUTH_COOKIE_SAMESITE": "Lax",
-    "AUTH_COOKIE_SECURE": not DEBUG
+    "AUTH_COOKIE_SECURE": not DEBUG,
+    "USER_EMAIL_FIELD": "email",
+    "USER_EMAIL_CLAIM": "email",
+    "CLAIMS_MAPPING": {
+        "id": "user_id",
+        "email": "email",
+        "is_staff": "is_staff",
+        "is_verified": "is_verified"
+    }
 }
 
 # REST Framework and Auth Configuration
@@ -426,3 +496,15 @@ CSP_OBJECT_SRC = ("'none'",)
 # Default Field Type
 # ------------------------------------------------------------------------------
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+#CACHES = {
+#    'default': {
+#        'BACKEND': 'django_redis.cache.RedisCache',
+#        'LOCATION': 'redis://127.0.0.1:6379/1',
+#        'OPTIONS': {
+#            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+#        },
+#        'KEY_PREFIX': 'nordiccodeplanner',
+#    }
+#}
+
