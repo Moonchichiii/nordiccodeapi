@@ -92,8 +92,6 @@ LOCAL_APPS = [
     "chat",
     
     "chatbot",    
-    
-
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -185,8 +183,6 @@ UNFOLD = {
         ]
     }
 }
-
-
 
 # =============================================================================
 # AUTHENTICATION CONFIGURATION
@@ -283,7 +279,6 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'contact@nordiccodeworks.com'
 DEFAULT_FROM_EMAIL = 'Nordic Code Works <contact@nordiccodeworks.com>'
 
-
 # Google OAuth2 Configuration 
 GOOGLE_OAUTH2_CLIENT_ID = google_config['GOOGLE_OAUTH2_CLIENT_ID']
 GOOGLE_OAUTH2_CLIENT_SECRET = google_config['GOOGLE_OAUTH2_CLIENT_SECRET']
@@ -298,7 +293,6 @@ EMAIL_RATE_LIMIT = {
     "password_reset": "3/h",
 }
 
-
 ADDRESS_VALIDATION = {
     'NOMINATIM_USER_AGENT': f'{PROJECT_NAME}/1.0',
     'CACHE_TIMEOUT': 86400,
@@ -306,6 +300,11 @@ ADDRESS_VALIDATION = {
         'NOMINATIM': 1,
     }
 }
+
+if DEBUG:
+    SESSION_COOKIE_DOMAIN = None
+    CSRF_COOKIE_DOMAIN = None
+    CORS_ALLOW_CREDENTIALS = True
 
 # =============================================================================
 # DATABASE CONFIGURATION
@@ -349,6 +348,12 @@ FILE_UPLOAD_HANDLERS = [
 MEDIA_FILE_STORAGE = {
     "max_upload_size": 5242880,
     "allowed_extensions": ["pdf", "doc", "docx", "jpg", "png", "svg"],
+}
+
+STATICFILES_CONTENT_TYPES = {
+    'js': 'application/javascript',
+    'css': 'text/css',
+    'woff2': 'font/woff2'
 }
 
 # Cloudinary Settings
@@ -453,58 +458,46 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 # CONTENT SECURITY POLICY
 # =============================================================================
 
-CSP_DEFAULT_SRC = ("'self'", "http://localhost:5173")
+CSP_DEFAULT_SRC = ("'self'", "http://localhost:5173", "http://localhost:8000")
 CSP_SCRIPT_SRC = (
     "'self'",
     "'unsafe-inline'",
     "'unsafe-eval'",
     "https://cdnjs.cloudflare.com",
     "http://localhost:5173",
+    "http://localhost:8000"
 )
 CSP_STYLE_SRC = (
     "'self'",
     "'unsafe-inline'",
-    "https://fonts.googleapis.com",
     "http://localhost:5173",
+    "http://localhost:8000",
+    "https://fonts.googleapis.com"
 )
 CSP_IMG_SRC = (
     "'self'",
     "data:",
     "blob:",
     "https://res.cloudinary.com",
-    "http://localhost:8000",
     "http://localhost:5173",
+    "http://localhost:8000"
 )
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")
 CSP_CONNECT_SRC = (
     "'self'",
-    "http://localhost:8000",
+    "ws://localhost:5173",
     "http://localhost:5173",
+    "http://localhost:8000",
     "https://nordiccodeworks.com",
     "https://api.openai.com",
     'https://accounts.google.com',
-    'https://nominatim.openstreetmap.org',
+    'https://nominatim.openstreetmap.org'
 )
 CSP_FRAME_SRC = ("'none'",)
+CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_OBJECT_SRC = ("'none'",)
-
 
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
-
-# Default Field Type
-# ------------------------------------------------------------------------------
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-#CACHES = {
-#    'default': {
-#        'BACKEND': 'django_redis.cache.RedisCache',
-#        'LOCATION': 'redis://127.0.0.1:6379/1',
-#        'OPTIONS': {
-#            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#        },
-#        'KEY_PREFIX': 'nordiccodeplanner',
-#    }
-#}
 

@@ -1,5 +1,4 @@
 from typing import Optional
-
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 
@@ -10,17 +9,15 @@ class CaseInsensitiveEmailBackend(ModelBackend):
     def authenticate(
         self,
         request,
-        username: Optional[str] = None,
         email: Optional[str] = None,
         password: Optional[str] = None,
         **kwargs
     ) -> Optional[get_user_model()]:
         """
-        Authenticate a user based on email (case-insensitive) and password.
+        Authenticate a user based solely on email (case-insensitive) and password.
 
         Args:
             request: The HTTP request object.
-            username: The username of the user.
             email: The email of the user.
             password: The password of the user.
 
@@ -29,7 +26,7 @@ class CaseInsensitiveEmailBackend(ModelBackend):
         """
         UserModel = get_user_model()
 
-        email = (username or email or "").lower().strip()
+        email = (email or "").lower().strip()
         if not email or not password:
             return None
 
