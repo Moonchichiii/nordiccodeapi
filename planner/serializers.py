@@ -5,11 +5,26 @@ class PlannerSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlannerSubmission
         fields = [
-            'id', 
-            'submission_data', 
-            'client_summary', 
-            'developer_worksheet', 
+            'id',
+            'submission_data',
+            'client_summary',
+            'website_template',
+            'developer_worksheet',
             'created_at'
         ]
-        # Read-only: outputs are generated after submission.
-        read_only_fields = ['id', 'client_summary', 'developer_worksheet', 'created_at']
+        read_only_fields = ['id', 'client_summary', 'website_template', 'developer_worksheet', 'created_at']
+
+    def validate(self, attrs):
+        if not self.context.get('project'):
+            raise serializers.ValidationError("Project must be provided")
+        return attrs
+
+    def create(self, validated_data):
+        project = self.context.get('project')
+        if not project:
+            raise serializers.ValidationError("Project must be provided")
+        instance = PlannerSubmission.objects.create(
+            project=project,
+            submission_data=validated_data.get('submission_data')
+        )
+        return instance

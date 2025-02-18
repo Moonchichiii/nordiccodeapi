@@ -45,10 +45,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return ProjectDetailSerializer
 
     def perform_create(self, serializer):
+        # Create the project as a draft then set its status to planning.
         project = serializer.save(user=self.request.user, status='draft')
-        project.status = 'planning'        
+        project.status = 'planning'
         project.save()
-
 
     @transaction.atomic
     @action(detail=True, methods=['post'])
@@ -97,11 +97,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
             except ProjectPackage.DoesNotExist:
                 return Response({'error': f"Invalid package_id: {package_id}"},
                                 status=status.HTTP_400_BAD_REQUEST)
+        # Delete any previous add-on associations
         ProjectAddon.objects.filter(project=project).delete()
         package_type = project.package.type
         for addon_pk in addons_list:
             try:
                 addon_obj = Addon.objects.get(pk=addon_pk, is_active=True)
+                # For enterprise packages, certain add-ons might be included by default.
                 included = package_type == 'enterprise' and addon_obj.compatible_packages.filter(type='enterprise').exists()
                 ProjectAddon.objects.create(project=project, addon=addon_obj, is_included=included)
             except Addon.DoesNotExist:
@@ -116,12 +118,22 @@ class ProjectViewSet(viewsets.ModelViewSet):
         try:
             submission = project.planner_submission
         except PlannerSubmission.DoesNotExist:
-            return Response({"error": "No planner submission found."}, status=400)
+            # Return basic project data with a warning if no submission is found.
+            return Response({
+                "warning": "Planner submission not yet available. Please try again later.",
+                "project": {
+                    "id": project.id,
+                    "title": project.title,
+                    "price_eur": project.total_price_eur,
+                    "features": project.package.features,
+                }
+            }, status=status.HTTP_200_OK)
+
         summary_data = {
-            "package": {
-                "id": project.package.type,
-                "title": project.package.name,
-                "price_eur": project.package.price_eur,
+            "project": {
+                "id": project.id,
+                "title": project.title,
+                "price_eur": project.total_price_eur,
                 "features": project.package.features,
             },
             "addons": [
@@ -133,9 +145,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
             ],
             "planner": {
                 "client_summary": submission.client_summary,
-                "developer_worksheet": submission.developer_worksheet,
+                "website_template": submission.website_template,
+                "developer_notes": submission.developer_worksheet,
             },
-            "total_price_eur": project.total_price_eur,
         }
         return Response(summary_data)
 
@@ -146,9 +158,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         try:
             submission = project.planner_submission
         except PlannerSubmission.DoesNotExist:
-            return Response({"error": "No planner submission found."}, status=400)
+            return Response({"error": "No planner submission found."}, status=status.HTTP_400_BAD_REQUEST)
         if not submission.client_summary or not submission.developer_worksheet:
-            return Response({"error": "Summary data is incomplete."}, status=400)
+            return Response({"error": "Summary data is incomplete."}, status=status.HTTP_400_BAD_REQUEST)
         project.status = 'pending_payment'
         project.save()
         return Response({"detail": "Project summary confirmed and status updated to pending_payment."},

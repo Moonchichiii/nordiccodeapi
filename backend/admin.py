@@ -1,25 +1,38 @@
 from django.contrib.admin import AdminSite
-from django.urls import reverse
+from unfold.admin import ModelAdmin
+from django.urls import path, reverse
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 from django.utils.html import format_html
-from django.contrib import admin
-from django.db.models import Sum, Count
-from datetime import datetime, timedelta
-from django.contrib.admin import ModelAdmin 
-
+from django.db.models import Sum
 
 from projects.models import Project
 from billing.models import Payment
 from users.models import CustomUser
 
+@require_POST
+def toggle_sidebar(request):
+    current = request.session.get('sidebar_open', True)
+    request.session['sidebar_open'] = not current
+    return JsonResponse({'sidebar_open': request.session['sidebar_open']})
 
 class CustomAdminSite(AdminSite):
     site_header = 'Nordic Code Works Management'
     site_title = 'Site Management'
     index_title = 'Dashboard'
+    
+    def get_app_list(self, request, *args, **kwargs):
+        app_list = super().get_app_list(request, *args, **kwargs)
+        # Filter out unwanted apps (e.g., Auth)
+        filtered = [app for app in app_list if app['name'] != 'Auth']
+        return filtered
 
-    def get_app_list(self, request):
-        app_list = super().get_app_list(request)
-        return app_list
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('toggle_sidebar/', self.admin_view(toggle_sidebar), name='toggle_sidebar'),
+        ]
+        return custom_urls + urls
 
 admin_site = CustomAdminSite(name='admin')
 
@@ -66,7 +79,7 @@ class ProjectAdmin(ModelAdmin):
 
     def payment_status(self, obj):
         total_paid = Payment.objects.filter(
-            project=obj, 
+            payment_plan__project=obj, 
             status='completed'
         ).aggregate(Sum('amount'))['amount__sum'] or 0
         percentage = (total_paid / obj.total_price_eur * 100) if obj.total_price_eur else 0
@@ -74,10 +87,7 @@ class ProjectAdmin(ModelAdmin):
         if percentage >= 100:
             return format_html('<span style="color: green;">Paid</span>')
         elif percentage > 0:
-            return format_html(
-                '<span style="color: orange;">{:.0f}% Paid</span>', 
-                percentage
-            )
+            return format_html('<span style="color: orange;">{:.0f}% Paid</span>', percentage)
         return format_html('<span style="color: red;">Unpaid</span>')
     payment_status.short_description = "Payment Status"
 
@@ -92,12 +102,12 @@ class ProjectAdmin(ModelAdmin):
 class PaymentAdmin(ModelAdmin):
     list_display = ('id', 'project_link', 'amount', 'status', 'created_at')
     list_filter = ('status', 'payment_type')
-    search_fields = ('project__title', 'id')
+    search_fields = ('payment_plan__project__title', 'id')
     readonly_fields = ('created_at', 'paid_at')
 
     fieldsets = (
         ('Payment Details', {
-            'fields': ('project', 'amount', 'payment_type', 'status'),
+            'fields': ('payment_plan', 'amount', 'payment_type', 'status'),
             'description': 'Basic payment information'
         }),
         ('Timing', {
@@ -106,11 +116,12 @@ class PaymentAdmin(ModelAdmin):
         }),
     )
 
-    def project_link(self, obj):
+    def project_link(self, obj):        
+        project = obj.payment_plan.project
         return format_html(
             '<a href="{}">{}</a>',
-            reverse('admin:projects_project_change', args=[obj.project.id]),
-            obj.project.title
+            reverse('admin:projects_project_change', args=[project.id]),
+            project.title
         )
     project_link.short_description = "Project"
 
@@ -126,8 +137,7 @@ class CustomUserAdmin(ModelAdmin):
             'description': 'Basic contact information'
         }),
         ('Address', {
-            'fields': ('street_address', 'city', 'state_or_region', 
-                      'postal_code', 'country'),
+            'fields': ('street_address', 'city', 'state_or_region', 'postal_code', 'country'),
             'description': 'Client address details'
         }),
         ('Business Information', {

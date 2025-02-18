@@ -10,7 +10,7 @@ from pathlib import Path
 import dj_database_url
 from decouple import config
 from .google import GoogleService
-
+from django.templatetags.static import static
 
 google_service = GoogleService()
 google_config = google_service.get_config()
@@ -51,9 +51,13 @@ SESSION_COOKIE_SAMESITE = "Lax"
 
 DJANGO_APPS = [
     "daphne",
-    'unfold',
-    'unfold.contrib.filters',
-    'unfold.contrib.forms',    
+    "unfold",
+    "unfold.contrib.filters",
+    "unfold.contrib.forms",
+    "unfold.contrib.inlines",
+    "unfold.contrib.import_export",
+    "unfold.contrib.guardian",
+    "unfold.contrib.simple_history",    
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -135,22 +139,37 @@ TEMPLATES = [
 ]
 
 UNFOLD = {
+    "STYLES": [
+         lambda request: static("css/admin.css"),
+    ],
     "SITE_TITLE": "Nordic Code Works",
     "SITE_HEADER": "Site Management",
     "SITE_URL": "/",
     "SITE_ICON": None,
     "COLORS": {
         "primary": {
-            "50": "#F6F8FF",
-            "100": "#EDF0FF",
-            "200": "#D6DEFF",
-            "300": "#B8C7FF",
-            "400": "#8BA3FF",
-            "500": "#6687FF",
-            "600": "#3366FF",
-            "700": "#254EDB",
-            "800": "#1A3BB7",
-            "900": "#102A93",
+            "50": "#f8fafc",
+            "100": "#f1f5f9",
+            "200": "#e2e8f0",
+            "300": "#cbd5e1",
+            "400": "#94a3b8",
+            "500": "#64748b",
+            "600": "#475569",
+            "700": "#334155",
+            "800": "#1e293b",
+            "900": "#0f172a",
+        },
+        "secondary": {
+            "50": "#f0f9ff",
+            "100": "#e0f2fe",
+            "200": "#bae6fd",
+            "300": "#7dd3fc",
+            "400": "#38bdf8",
+            "500": "#0ea5e9",
+            "600": "#0284c7",
+            "700": "#0369a1",
+            "800": "#075985",
+            "900": "#0c4a6e",
         },
     },
     "SIDEBAR": {
@@ -158,18 +177,18 @@ UNFOLD = {
         "show_all_applications": True,
         "items": [
             {
+                "title": "Users",
+                "icon": "people",
+                "items": [
+                    {"title": "Users", "url": "admin:users_customuser_changelist"}
+                ]
+            },
+            {
                 "title": "Projects",
                 "icon": "work",
                 "items": [
                     {"title": "Projects", "url": "admin:projects_project_changelist"},
-                    {"title": "Packages", "url": "admin:projects_projectpackage_changelist"},
-                ]
-            },
-            {
-                "title": "Clients",
-                "icon": "people",
-                "items": [
-                    {"title": "Users", "url": "admin:users_customuser_changelist"}
+                    {"title": "Packages", "url": "admin:projects_projectpackage_changelist"}
                 ]
             },
             {
@@ -183,6 +202,8 @@ UNFOLD = {
         ]
     }
 }
+
+
 
 # =============================================================================
 # AUTHENTICATION CONFIGURATION
@@ -335,11 +356,22 @@ USE_TZ = True
 # STATIC AND MEDIA FILES CONFIGURATION
 # =============================================================================
 
-STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
+# Media files configuration
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# File upload configuration
 FILE_UPLOAD_HANDLERS = [
     "django.core.files.uploadhandler.MemoryFileUploadHandler",
     "django.core.files.uploadhandler.TemporaryFileUploadHandler",
@@ -356,7 +388,7 @@ STATICFILES_CONTENT_TYPES = {
     'woff2': 'font/woff2'
 }
 
-# Cloudinary Settings
+# Cloudinary configuration
 CLOUDINARY_STORAGE = {
     "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME"),
     "API_KEY": config("CLOUDINARY_API_KEY"),
@@ -376,6 +408,8 @@ LA_POSTE_API_KEY = config("LA_POSTE_API_KEY")
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = config("STRIPE_PUBLISHABLE_KEY")
 OPENAI_API_KEY = config("OPENAI_API_KEY")
+
+AI_PLANNER = config("AI_PLANNER")
 
 # =============================================================================
 # CORS CONFIGURATION
@@ -458,15 +492,32 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 # CONTENT SECURITY POLICY
 # =============================================================================
 
-CSP_DEFAULT_SRC = ("'self'", "http://localhost:5173", "http://localhost:8000")
-CSP_SCRIPT_SRC = (
+# =============================================================================
+# CONTENT SECURITY POLICY
+# =============================================================================
+
+CSP_DEFAULT_SRC = (
     "'self'",
-    "'unsafe-inline'",
-    "'unsafe-eval'",
-    "https://cdnjs.cloudflare.com",
     "http://localhost:5173",
     "http://localhost:8000"
 )
+
+CSP_CONNECT_SRC = (
+    "'self'",
+    "ws://localhost:5173",
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "https://api.anthropic.com",
+    "https://160.79.104.0/23",
+)
+
+CSP_SCRIPT_SRC = (
+    "'self'",
+    "'unsafe-eval'",
+    "http://localhost:5173",
+    "http://localhost:8000"
+)
+
 CSP_STYLE_SRC = (
     "'self'",
     "'unsafe-inline'",
@@ -474,26 +525,28 @@ CSP_STYLE_SRC = (
     "http://localhost:8000",
     "https://fonts.googleapis.com"
 )
+
+
 CSP_IMG_SRC = (
     "'self'",
     "data:",
-    "blob:",
     "https://res.cloudinary.com",
     "http://localhost:5173",
     "http://localhost:8000"
 )
-CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")
-CSP_CONNECT_SRC = (
-    "'self'",
-    "ws://localhost:5173",
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "https://nordiccodeworks.com",
-    "https://api.openai.com",
-    'https://accounts.google.com',
-    'https://nominatim.openstreetmap.org'
+
+CSP_FONT_SRC = (
+    "'self'", 
+    "https://fonts.gstatic.com", 
+    "data:"
 )
-CSP_FRAME_SRC = ("'none'",)
+
+CSP_FRAME_SRC = (
+    "'self'",
+    "http://localhost:5173",
+    "http://localhost:8000"
+)
+
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_OBJECT_SRC = ("'none'",)
 
