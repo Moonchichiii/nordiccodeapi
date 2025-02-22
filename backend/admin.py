@@ -1,5 +1,8 @@
-from django.contrib.admin import AdminSite
+from django.contrib import admin
 from unfold.admin import ModelAdmin
+from django.contrib import admin
+from django.contrib.admin import AdminSite
+
 from django.urls import path, reverse
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -12,6 +15,9 @@ from users.models import CustomUser
 
 @require_POST
 def toggle_sidebar(request):
+    """
+    Toggle the sidebar open/closed state in the user session.
+    """
     current = request.session.get('sidebar_open', True)
     request.session['sidebar_open'] = not current
     return JsonResponse({'sidebar_open': request.session['sidebar_open']})
@@ -22,12 +28,16 @@ class CustomAdminSite(AdminSite):
     index_title = 'Dashboard'
     
     def get_app_list(self, request, *args, **kwargs):
+        """
+        Customize the app list by filtering out unwanted apps.
+        """
         app_list = super().get_app_list(request, *args, **kwargs)
-        # Filter out unwanted apps (e.g., Auth)
-        filtered = [app for app in app_list if app['name'] != 'Auth']
-        return filtered
+        return [app for app in app_list if app['name'] != 'Auth']
 
     def get_urls(self):
+        """
+        Append custom URL patterns (e.g. for toggling the sidebar) to the default admin URLs.
+        """
         urls = super().get_urls()
         custom_urls = [
             path('toggle_sidebar/', self.admin_view(toggle_sidebar), name='toggle_sidebar'),
@@ -68,16 +78,23 @@ class ProjectAdmin(ModelAdmin):
         }),
     )
 
+    @admin.display(description="Preview")
     def view_site_button(self, obj):
+        """
+        Return a button linking to the live site preview if the project is active.
+        """
         if obj.status == 'active':
             return format_html(
                 '<a class="button" href="{}" target="_blank">View Live Site</a>',
                 f'/preview/{obj.id}'
             )
         return "Not Live"
-    view_site_button.short_description = "Preview"
 
+    @admin.display(description="Payment Status")
     def payment_status(self, obj):
+        """
+        Compute the payment status based on the total paid versus total price.
+        """
         total_paid = Payment.objects.filter(
             payment_plan__project=obj, 
             status='completed'
@@ -89,15 +106,20 @@ class ProjectAdmin(ModelAdmin):
         elif percentage > 0:
             return format_html('<span style="color: orange;">{:.0f}% Paid</span>', percentage)
         return format_html('<span style="color: red;">Unpaid</span>')
-    payment_status.short_description = "Payment Status"
 
+    @admin.display(description="User Email")
     def user_email(self, obj):
-        return obj.user.email
-    user_email.short_description = "User Email"
+        """
+        Return the email of the associated user.
+        """
+        return getattr(obj.user, 'email', '-')
 
+    @admin.display(description="Package")
     def package_display(self, obj):
+        """
+        Return the package name if available.
+        """
         return obj.package.name if obj.package else "-"
-    package_display.short_description = "Package"
 
 class PaymentAdmin(ModelAdmin):
     list_display = ('id', 'project_link', 'amount', 'status', 'created_at')
@@ -116,14 +138,26 @@ class PaymentAdmin(ModelAdmin):
         }),
     )
 
-    def project_link(self, obj):        
-        project = obj.payment_plan.project
-        return format_html(
-            '<a href="{}">{}</a>',
-            reverse('admin:projects_project_change', args=[project.id]),
-            project.title
-        )
-    project_link.short_description = "Project"
+    def get_queryset(self, request):
+        """
+        Optimize the queryset by selecting related project via payment_plan.
+        """
+        qs = super().get_queryset(request)
+        return qs.select_related('payment_plan__project')
+
+    @admin.display(description="Project")
+    def project_link(self, obj):
+        """
+        Return a clickable link to the related project's change page.
+        """
+        project = getattr(obj.payment_plan, 'project', None)
+        if project:
+            return format_html(
+                '<a href="{}">{}</a>',
+                reverse('admin:projects_project_change', args=[project.id]),
+                project.title
+            )
+        return "N/A"
 
 class CustomUserAdmin(ModelAdmin):
     list_display = ('email', 'full_name', 'projects_count', 'is_active')
@@ -150,15 +184,14 @@ class CustomUserAdmin(ModelAdmin):
         }),
     )
 
+    @admin.display(description="Projects")
     def projects_count(self, obj):
+        """
+        Display the count of projects associated with the user as a clickable link.
+        """
         count = Project.objects.filter(user=obj).count()
-        return format_html(
-            '<a href="{}?user__id__exact={}">{} projects</a>',
-            reverse('admin:projects_project_changelist'),
-            obj.id,
-            count
-        )
-    projects_count.short_description = "Projects"
+        url = f"{reverse('admin:projects_project_changelist')}?user__id__exact={obj.id}"
+        return format_html('<a href="{}">{} projects</a>', url, count)
 
 # Register models with the custom admin site
 admin_site.register(Project, ProjectAdmin)

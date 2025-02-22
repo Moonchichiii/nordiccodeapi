@@ -11,6 +11,8 @@ import dj_database_url
 from decouple import config
 from .google import GoogleService
 from django.templatetags.static import static
+from django.utils.translation import gettext_lazy as _
+from django.urls import reverse_lazy
 
 google_service = GoogleService()
 google_config = google_service.get_config()
@@ -139,50 +141,61 @@ TEMPLATES = [
 ]
 
 UNFOLD = {
-    "STYLES": [
-         lambda request: static("css/admin.css"),
-    ],
     "SITE_TITLE": "Nordic Code Works",
     "SITE_HEADER": "Site Management",
     "SITE_URL": "/",
-    "SITE_ICON": None,
+    "SITE_ICON": None,  
+    "STYLES": [
+        lambda request: static("css/styles.css"),
+    ],
+    "BORDER_RADIUS": "6px",
     "COLORS": {
-        "primary": {
-            "50": "#f8fafc",
-            "100": "#f1f5f9",
-            "200": "#e2e8f0",
-            "300": "#cbd5e1",
-            "400": "#94a3b8",
-            "500": "#64748b",
-            "600": "#475569",
-            "700": "#334155",
-            "800": "#1e293b",
-            "900": "#0f172a",
+        "base": {
+            "50": "249 250 251",
+            "100": "243 244 246",
+            "200": "229 231 235",
+            "300": "209 213 219",
+            "400": "156 163 175",
+            "500": "107 114 128",
+            "600": "75 85 99",
+            "700": "55 65 81",
+            "800": "31 41 55",
+            "900": "17 24 39",
+            "950": "3 7 18",
         },
-        "secondary": {
-            "50": "#f0f9ff",
-            "100": "#e0f2fe",
-            "200": "#bae6fd",
-            "300": "#7dd3fc",
-            "400": "#38bdf8",
-            "500": "#0ea5e9",
-            "600": "#0284c7",
-            "700": "#0369a1",
-            "800": "#075985",
-            "900": "#0c4a6e",
+        "primary": {
+            "50": "250 245 255",
+            "100": "243 232 255",
+            "200": "233 213 255",
+            "300": "216 180 254",
+            "400": "192 132 252",
+            "500": "168 85 247",
+            "600": "147 51 234",
+            "700": "126 34 206",
+            "800": "107 33 168",
+            "900": "88 28 135",
+            "950": "59 7 100",
+        },
+        "font": {
+            "subtle-light": "var(--color-base-500)",
+            "subtle-dark": "var(--color-base-400)",
+            "default-light": "var(--color-base-600)",
+            "default-dark": "var(--color-base-300)",
+            "important-light": "var(--color-base-900)",
+            "important-dark": "var(--color-base-100)",
+        },
+    },
+    "EXTENSIONS": {
+        "modeltranslation": {
+            "flags": {
+                "en": "🇬🇧",
+            },
         },
     },
     "SIDEBAR": {
-        "show_search": True,
-        "show_all_applications": True,
+        "show_search": False,
+        "show_all_applications": False,
         "items": [
-            {
-                "title": "Users",
-                "icon": "people",
-                "items": [
-                    {"title": "Users", "url": "admin:users_customuser_changelist"}
-                ]
-            },
             {
                 "title": "Projects",
                 "icon": "work",
@@ -198,9 +211,49 @@ UNFOLD = {
                     {"title": "Payments", "url": "admin:billing_payment_changelist"},
                     {"title": "Plans", "url": "admin:billing_paymentplan_changelist"}
                 ]
+            },
+            {
+                "title": "Users",
+                "icon": "people",
+                "items": [
+                    {"title": "Users", "url": "admin:users_customuser_changelist"}
+                ]
             }
-        ]
-    }
+        ],
+        "navigation": [
+            {
+                "title": _("Navigation"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Dashboard"),
+                        "icon": "dashboard",
+                        "link": reverse_lazy("admin:index"),
+                        "badge": "sample_app.badge_callback",
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": _("Users"),
+                        "icon": "people",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                    },
+                ],
+            },
+        ],
+    },
+    "TABS": [
+        {
+            "models": ["app_label.model_name_in_lowercase"],
+            "items": [
+                {
+                    "title": _("Your custom title"),
+                    "link": reverse_lazy("admin:app_label_model_name_changelist"),
+                    "permission": "sample_app.permission_callback",
+                },
+            ],
+        },
+    ],
 }
 
 
