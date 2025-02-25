@@ -10,9 +10,8 @@ from pathlib import Path
 import dj_database_url
 from decouple import config
 from .google import GoogleService
-from django.templatetags.static import static
-from django.utils.translation import gettext_lazy as _
 from django.urls import reverse_lazy
+from django.utils.translation import gettext_lazy as _
 
 google_service = GoogleService()
 google_config = google_service.get_config()
@@ -51,16 +50,16 @@ SESSION_COOKIE_SAMESITE = "Lax"
 # APPLICATION DEFINITION
 # =============================================================================
 
-DJANGO_APPS = [
-    "daphne",
+DJANGO_APPS = [    
     "unfold",
-    "unfold.contrib.filters",
+    "unfold.contrib.filters",  
     "unfold.contrib.forms",
     "unfold.contrib.inlines",
     "unfold.contrib.import_export",
     "unfold.contrib.guardian",
     "unfold.contrib.simple_history",    
     "django.contrib.admin",
+    "daphne",    
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -127,7 +126,7 @@ MIDDLEWARE = [
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        'DIRS': [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -140,121 +139,89 @@ TEMPLATES = [
     },
 ]
 
+
+
 UNFOLD = {
+    # Basic site info
     "SITE_TITLE": "Nordic Code Works",
-    "SITE_HEADER": "Site Management",
+    "SITE_HEADER": "Nordic Code Works Management",
     "SITE_URL": "/",
-    "SITE_ICON": None,  
-    "STYLES": [
-        lambda request: static("css/styles.css"),
-    ],
+    
+    # Basic UI settings
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "SHOW_BACK_BUTTON": True,
     "BORDER_RADIUS": "6px",
-    "COLORS": {
-        "base": {
-            "50": "249 250 251",
-            "100": "243 244 246",
-            "200": "229 231 235",
-            "300": "209 213 219",
-            "400": "156 163 175",
-            "500": "107 114 128",
-            "600": "75 85 99",
-            "700": "55 65 81",
-            "800": "31 41 55",
-            "900": "17 24 39",
-            "950": "3 7 18",
-        },
-        "primary": {
-            "50": "250 245 255",
-            "100": "243 232 255",
-            "200": "233 213 255",
-            "300": "216 180 254",
-            "400": "192 132 252",
-            "500": "168 85 247",
-            "600": "147 51 234",
-            "700": "126 34 206",
-            "800": "107 33 168",
-            "900": "88 28 135",
-            "950": "59 7 100",
-        },
-        "font": {
-            "subtle-light": "var(--color-base-500)",
-            "subtle-dark": "var(--color-base-400)",
-            "default-light": "var(--color-base-600)",
-            "default-dark": "var(--color-base-300)",
-            "important-light": "var(--color-base-900)",
-            "important-dark": "var(--color-base-100)",
-        },
-    },
-    "EXTENSIONS": {
-        "modeltranslation": {
-            "flags": {
-                "en": "🇬🇧",
-            },
-        },
-    },
+    
+    # Customized sidebar
     "SIDEBAR": {
         "show_search": False,
         "show_all_applications": False,
-        "items": [
-            {
-                "title": "Projects",
-                "icon": "work",
-                "items": [
-                    {"title": "Projects", "url": "admin:projects_project_changelist"},
-                    {"title": "Packages", "url": "admin:projects_projectpackage_changelist"}
-                ]
-            },
-            {
-                "title": "Billing",
-                "icon": "payments",
-                "items": [
-                    {"title": "Payments", "url": "admin:billing_payment_changelist"},
-                    {"title": "Plans", "url": "admin:billing_paymentplan_changelist"}
-                ]
-            },
-            {
-                "title": "Users",
-                "icon": "people",
-                "items": [
-                    {"title": "Users", "url": "admin:users_customuser_changelist"}
-                ]
-            }
-        ],
         "navigation": [
             {
-                "title": _("Navigation"),
+                "title": _("Dashboard"),
                 "separator": True,
-                "collapsible": True,
                 "items": [
                     {
-                        "title": _("Dashboard"),
+                        "title": _("Overview"),
                         "icon": "dashboard",
                         "link": reverse_lazy("admin:index"),
-                        "badge": "sample_app.badge_callback",
-                        "permission": lambda request: request.user.is_superuser,
+                        "permission": lambda request: request.user.is_staff,
+                    }
+                ]
+            },
+            {
+                "title": _("Projects"),
+                "icon": "work",
+                "items": [
+                    {
+                        "title": _("All Projects"),
+                        "icon": "list",
+                        "link": reverse_lazy("admin:projects_project_changelist"),
                     },
                     {
-                        "title": _("Users"),
-                        "icon": "people",
-                        "link": reverse_lazy("admin:auth_user_changelist"),
-                    },
-                ],
+                        "title": _("Project Packages"),
+                        "icon": "package",
+                        "link": reverse_lazy("admin:projects_projectpackage_changelist"),
+                    }
+                ]
             },
-        ],
-    },
-    "TABS": [
-        {
-            "models": ["app_label.model_name_in_lowercase"],
-            "items": [
-                {
-                    "title": _("Your custom title"),
-                    "link": reverse_lazy("admin:app_label_model_name_changelist"),
-                    "permission": "sample_app.permission_callback",
-                },
-            ],
-        },
-    ],
+            {
+                "title": _("Billing"),
+                "icon": "payments",
+                "items": [
+                    {
+                        "title": _("Payments"),
+                        "icon": "payment",
+                        "link": reverse_lazy("admin:billing_payment_changelist"),
+                    },
+                    {
+                        "title": _("Payment Plans"),
+                        "icon": "account_balance",
+                        "link": reverse_lazy("admin:billing_paymentplan_changelist"),
+                    }
+                ]
+            },
+            {
+                "title": _("Users"),
+                "icon": "people",
+                "items": [
+                    {
+                        "title": _("All Users"),
+                        "icon": "group",
+                        "link": reverse_lazy("admin:users_customuser_changelist"),
+                    },
+                    {
+                        "title": _("Add User"),
+                        "icon": "person_add",
+                        "link": reverse_lazy("admin:users_customuser_add"),
+                    }
+                ]
+            }
+        ]
+    }
 }
+
 
 
 
@@ -585,7 +552,9 @@ CSP_IMG_SRC = (
     "data:",
     "https://res.cloudinary.com",
     "http://localhost:5173",
-    "http://localhost:8000"
+    "http://localhost:8000",
+    "https://api.anthropic.com",
+    "https://160.79.104.0/23"
 )
 
 CSP_FONT_SRC = (
@@ -607,3 +576,39 @@ CSP_OBJECT_SRC = ("'none'",)
 # LOGGING CONFIGURATION
 # =============================================================================
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',  # Set to DEBUG to see all logs
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'planner': {  
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
